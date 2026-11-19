@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, THEMES, THEME_COLORS } from './supabase'
 import { useAuth } from './AuthContext'
 import { playNotify } from './sounds'
+import { usePushStatus, setupPush } from './push'
 export function BlockedList() {
   const { session } = useAuth(); const uid = session!.user.id; const [list, setList] = useState<any[] | null>(null)
   const load = () => supabase.from('blocks').select('blocked_id,who:profiles!blocks_blocked_id_fkey(id,username,full_name,avatar_url)').eq('blocker_id', uid).then(({ data }) => setList(data ?? []))
@@ -25,9 +26,21 @@ export function TypingAnother() {
     <label className={row}><span>Allow my name in other people's status<small className="block text-mute">Without this, you are never named.</small></span><input type="checkbox" checked={!!profile?.typing_name_consent} onChange={e => set('typing_name_consent', e.target.checked)} /></label>
     <p className="rounded-xl bg-surface p-3 text-sm"><span className="text-mute">Preview: </span><b>{preview}</b></p></section>)
 }
+function PushStatusCard() {
+  const { profile } = useAuth(); const s = usePushStatus()
+  const line = (k: string, v: string, ok?: boolean) => <p className="flex justify-between gap-3 text-sm"><span className="text-mute">{k}</span><span className={ok === undefined ? '' : ok ? 'text-green-400' : 'text-red-400'}>{v}</span></p>
+  return (<section className="flex flex-col gap-2 rounded-xl border border-line p-3"><h2 className="font-bold">Notification status</h2>
+    {line('Android app', s.native ? 'yes' : 'no', s.native)}{line('Push in this build', s.flag ? 'ON' : 'OFF', s.flag)}{line('Permission', s.perm, s.perm === 'granted')}{line('Device token', s.token, s.token !== '-')}{line('Saved to server', s.saved, s.saved.startsWith('saved'))}
+    {s.error && <p className="rounded-lg bg-red-950 p-2 text-xs text-red-300">{s.error}</p>}
+    <button onClick={() => profile && setupPush(profile.id, true)} className="mt-1 rounded-xl bg-accent px-4 py-2 font-semibold text-on">Retry</button></section>)
+}
 function ExtraPrefs() {
-  const row = 'flex items-center justify-between gap-3 rounded-xl border border-line p-3'
-  return (<section className="flex flex-col gap-2"><h2 className="font-bold">Preferences</h2></section>)
+  const { theme, setTheme } = useAuth()
+  return (<section className="flex flex-col gap-2"><h2 className="font-bold">App theme</h2>
+    <div className="grid grid-cols-2 gap-2">{THEMES.map(([k, name]) => (
+      <button key={k} onClick={() => setTheme(k)} className={`flex items-center justify-between gap-2 rounded-xl border p-3 text-left text-sm ${theme === k ? 'border-accent text-accent' : 'border-line'}`}>
+        <span className="truncate">{name}</span>
+        <span className="flex shrink-0 gap-1">{(THEME_COLORS[k] ?? []).map((c, i) => <i key={i} className="h-3.5 w-3.5 rounded-full border border-line" style={{ background: c }} />)}</span></button>))}</div></section>)
 }
 export function TextoraPrefs() {
   const { profile, refresh } = useAuth(); const [, force] = useState(0)
@@ -47,5 +60,5 @@ export function TextoraPrefs() {
       <label className={row}>Message sent sound<input type="checkbox" checked={flag('sendSound')} onChange={e => toggle('sendSound', e.target.checked)} /></label>
       <label className={row}>Someone is typing sound<input type="checkbox" checked={flag('typingSound')} onChange={e => toggle('typingSound', e.target.checked)} /></label>
       <p className="text-sm text-mute">Sounds play while the app is open. When it is closed, push notifications alert you (mute a chat to silence it).</p></section>
-    <ExtraPrefs /><TypingAnother /><BlockedList /></div>)
+    <PushStatusCard /><ExtraPrefs /><TypingAnother /><BlockedList /></div>)
 }

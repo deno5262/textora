@@ -1,5 +1,6 @@
 node_modules
 dist
 .env
-android/app/google-services.json
-*.keystore
+android
+*.jks
+release.keystore

@@ -30,4 +30,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <Route path="*" element={<Navigate to="/textora" replace />} />
   </Routes></PresenceProvider></AuthProvider></ErrorBoundary></HashRouter></React.StrictMode>)
 
-setTimeout(() => { const s = document.getElementById('splash'); s?.classList.add('hide'); setTimeout(() => s?.remove(), 450) }, 900)
+setTimeout(() => { const s = document.getElementById('splash'); s?.classList.add('hide'); setTimeout(() => s?.remove(), 450) }, 350)
