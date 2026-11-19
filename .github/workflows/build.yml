@@ -49,11 +49,13 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_PUSH_READY: ${{ secrets.GOOGLE_SERVICES_JSON != '' && 'on' || 'off' }}
+          VITE_NATIVE_BUBBLES: 'on'
 
       - name: Create Android project
         run: |
           npx cap add android
           node scripts/patch-android.mjs
+          node scripts/add-bubbles.mjs
           if [ -n "$GSJ" ]; then printf '%s' "$GSJ" > android/app/google-services.json; fi
           npx cap sync android
         env:
@@ -64,8 +66,23 @@ jobs:
           mkdir -p ~/.android
           if [ -f keystore/debug.keystore ]; then cp keystore/debug.keystore ~/.android/debug.keystore; fi
 
-      - name: Build APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Build APK (falls back to a build without bubbles if the native part fails)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_PUSH_READY: ${{ secrets.GOOGLE_SERVICES_JSON != '' && 'on' || 'off' }}
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          build_apk() { (cd android && chmod +x gradlew && ./gradlew assembleDebug); }
+          if build_apk; then exit 0; fi
+          echo "::warning::Native bubble code failed to build. Building WITHOUT bubbles."
+          rm -rf android
+          VITE_NATIVE_BUBBLES=off npm run build
+          npx cap add android
+          node scripts/patch-android.mjs
+          if [ -n "$GSJ" ]; then printf '%s' "$GSJ" > android/app/google-services.json; fi
+          npx cap sync android
+          build_apk
 
       - uses: actions/upload-artifact@v4
         with:
