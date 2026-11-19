@@ -14,7 +14,7 @@ async function saveToken(uid: string, token: string) {
 export function usePush() {
   const { session } = useAuth(); const uid = session?.user.id; const nav = useNavigate()
   useEffect(() => {
-    if (!isNative || !uid) return
+    if (!isNative || !uid || true) return
     let cancelled = false
     ;(async () => {
       if (!wired) {
