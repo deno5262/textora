@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.from('profiles').select('*').eq('id', s.user.id).single(),
       supabase.from('user_settings').select('theme').eq('user_id', s.user.id).single()])
     if (p.data) { setProfile(p.data as Profile); cacheSet('profile', p.data) }
-    if (st.data?.theme) apply(st.data.theme)
+    if (st.data?.theme && !localStorage.getItem('themeChosen')) apply(st.data.theme)
   }, [])
   useEffect(() => {
     apply(theme)
@@ -26,8 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe()
   }, [])
   const setTheme = async (t: string) => {
-    apply(t)
-    if (session) await supabase.from('user_settings').update({ theme: t, updated_at: new Date().toISOString() }).eq('user_id', session.user.id)
+    apply(t); localStorage.setItem('themeChosen', '1')
+    if (session) await supabase.from('user_settings').upsert({ user_id: session.user.id, theme: t, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
   }
   return <C.Provider value={{ session, profile, theme, loading, setTheme, preview: apply, refresh: () => load(session) }}>{children}</C.Provider>
 }

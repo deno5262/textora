@@ -6,6 +6,7 @@ import { isNative } from './native'
 
 // Turned on automatically by the build when the GOOGLE_SERVICES_JSON secret exists (Firebase set up).
 const PUSH_READY = import.meta.env.VITE_PUSH_READY === 'on'
+const BUBBLES = import.meta.env.VITE_NATIVE_BUBBLES === 'on'
 const TOKEN_KEY = 'fcmToken', TRY_KEY = 'pushTry'
 let wired = false
 let currentUid: string | null = null
@@ -22,7 +23,7 @@ export function usePushStatus(): PushStatus {
 
 async function saveToken(uid: string, token: string): Promise<string> {
   localStorage.setItem(TOKEN_KEY, token)
-  const r = await supabase.rpc('register_device_token', { p_token: token, p_platform: 'android' })
+  const r = await supabase.rpc('register_device_token', { p_token: token, p_platform: 'android', p_bubbles: BUBBLES })
   if (!r.error) return 'saved ✔'
   const u = await supabase.from('device_tokens').upsert({ user_id: uid, token, platform: 'android', updated_at: new Date().toISOString() }, { onConflict: 'token' })
   return u.error ? 'DB error: ' + u.error.message : 'saved ✔'

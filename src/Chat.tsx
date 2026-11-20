@@ -75,7 +75,8 @@ export default function Chat() {
   }
   const addMsg = (m: Msg) => { setMsgs(cur => (cur.some(x => x.id === m.id) ? cur : [...cur, m])); if (m.attachment_path) sign([m.attachment_path]) }
   const patchMsg = (m: Partial<Msg> & { id: string }) => setMsgs(cur => cur.map(x => (x.id === m.id ? { ...x, ...m } : x)))
-  const markRead = () => { const n = new Date().toISOString(); supabase.from('conversation_members').update({ last_read_at: n, last_delivered_at: n }).eq('conversation_id', cid).eq('user_id', uid).then(() => window.dispatchEvent(new Event('textora-unread'))) }
+  const markRead = () => { if (document.visibilityState !== 'visible') return; const n = new Date().toISOString(); supabase.from('conversation_members').update({ last_read_at: n, last_delivered_at: n }).eq('conversation_id', cid).eq('user_id', uid).then(() => window.dispatchEvent(new Event('textora-unread'))) }
+  useEffect(() => { const f = () => { if (document.visibilityState === 'visible') markRead() }; document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f) }, [cid])
   const reloadReactions = async () => {
     const ids = msgsRef.current.map(m => m.id); if (!ids.length) return
     const { data } = await supabase.from('message_reactions').select('message_id,user_id,emoji').in('message_id', ids)

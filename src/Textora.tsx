@@ -13,6 +13,7 @@ import { Conv, convAv, fetchConvs, startDirect, agoShort, previewOf, statusOf, g
 import { Avatar } from './ui'
 import { TextoraPrefs } from './TextoraSettings'
 import { dropPushToken } from './push'
+import ThemeMenu from './ThemeMenu'
 type P = { id: string; username: string; full_name: string; avatar_url: string | null; show_active?: boolean; last_active_at?: string | null; living_in?: string | null; since?: string }
 type Note = { user_id: string; body: string; audience: string; created_at: string }
 function Sheet({ onClose, children, tall }: { onClose: () => void; children: React.ReactNode; tall?: boolean }) {
@@ -132,6 +133,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
     <header className="sticky top-0 z-10 bg-bg px-4 pb-2" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
       <div className="flex items-center gap-3">
         <h1 className="flex-1 text-3xl font-black tracking-tight"><span style={{ color: 'var(--accent)' }}>TEXT</span><span style={{ color: 'var(--accent2)' }}>ORA</span></h1>
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-surface"><ThemeMenu /></span>
         {t === 'chats' && <button aria-label="New" onClick={() => setCompose(true)} className="grid h-10 w-10 place-items-center rounded-full bg-surface"><MessageSquarePlus size={22} /></button>}</div>
       {(offline || (!convs && !loadErr)) && <p className="mt-1 text-center text-xs text-mute">{offline ? 'Waiting for network… showing saved chats' : ''}</p>}</header>
     <main className="flex-1 px-4 pb-28">
@@ -168,9 +170,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
         <button onClick={() => nav('/textora', { state: { arch: true } })} className={row}><Archive size={26} /><span className="flex-1 text-lg">Archive</span><ChevronRight className="text-mute" /></button>
         <Link to="/textora/people" onClick={() => setPmode('requests')} className={row}><Users size={26} /><span className="flex-1 text-lg">Friend requests</span>{reqs.length > 0 && <span className="rounded-full bg-red-500 px-2 text-xs font-bold text-white">{reqs.length}</span>}<ChevronRight className="text-mute" /></Link>
         <button onClick={async () => { await dropPushToken(); await supabase.auth.signOut() }} className={row}><LogOut size={26} /><span className="flex-1 text-left text-lg">Log out</span></button></div>}
-      {t === 'settings' && <div className="flex flex-col gap-5"><div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Settings</h2></div>
-        <div className="flex flex-col items-center gap-1">{profile && <Avatar a={profile} s={96} />}<b className="mt-2 text-2xl">{profile?.full_name || profile?.username}</b><span className="text-mute">@{profile?.username}</span></div>
-        <TextoraPrefs /></div>}
+      {t === 'settings' && <div className="flex flex-col gap-4"><div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Settings</h2></div><TextoraPrefs /></div>}
     </main>
     <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-xl border-t border-line bg-bg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {tabLink('/textora', 'chats', MessageCircle, 'Chats', unreadTotal)}{tabLink('/textora/people', 'people', Users, 'People', reqs.length)}{tabLink('/textora/menu', 'menu', MenuIcon, 'Menu')}</nav>
