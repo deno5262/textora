@@ -204,6 +204,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
         <div className="flex items-center justify-center gap-5">
           <button onClick={toggleMic} className={`${btn} ${muted ? 'bg-white text-black' : 'bg-white/20'}`} aria-label="Mute">{muted ? <MicOff /> : <Mic />}</button>
           {active.kind === 'video' && <button onClick={toggleCam} className={`${btn} ${camOff ? 'bg-white text-black' : 'bg-white/20'}`} aria-label="Camera">{camOff ? <VideoOff /> : <Video />}</button>}
-          <button onClick={hangUp} className={`${btn} bg-red-600`} aria-label="End call"><PhoneOff /></button></div></div></div></div>}
+          <button onClick={hangUp} className={`${btn} bg-red-600`} aria-label="End call"><PhoneOff /></button></div></div></div>}
   </CallCtx.Provider>)
 }
