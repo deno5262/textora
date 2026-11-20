@@ -4,9 +4,11 @@ import PullRefresh from './PullRefresh'
 import MessageAlerts from './MessageAlerts'
 import { usePush } from './push'
 import ErrorBar from './ErrorBar'
+import { useTypingListener } from './typingBus'
+import { useAuth } from './AuthContext'
 export default function Shell() {
   const [offline, setOffline] = useState(!navigator.onLine)
-  usePush()
+  usePush(); const { session } = useAuth(); useTypingListener(session?.user.id)
   useEffect(() => {
     const on = () => setOffline(false), off = () => setOffline(true)
     window.addEventListener('online', on); window.addEventListener('offline', off)

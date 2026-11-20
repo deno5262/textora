@@ -34,3 +34,5 @@ html,body,#root{height:100%}body{background:var(--bg);color:var(--ink);font-fami
 html,body{overscroll-behavior-y:contain}
 @keyframes tdots{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
 .tdot{display:inline-block;width:7px;height:7px;border-radius:9999px;background:var(--mute);animation:tdots 1.2s infinite ease-in-out}
+
+@keyframes emoRise{from{transform:translateY(14px) scale(.4);opacity:0}to{transform:none;opacity:1}}.emo-rise{animation:emoRise .32s cubic-bezier(.2,1.5,.4,1) both}

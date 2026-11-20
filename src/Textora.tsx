@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState , useRef} from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft } from 'lucide-react'
 import { supabase } from './supabase'
@@ -6,6 +6,8 @@ import { compress } from './image'
 import { useAuth } from './AuthContext'
 import { useOnline } from './Presence'
 import { useTypingView } from './useTyping'
+import { typingFresh, useTypingTick } from './typingBus'
+import { playTyping } from './sounds'
 import { useRefresh } from './useRefresh'
 import { useBackClose } from './useBackClose'
 import { cacheGet, cacheSet } from './cache'
@@ -76,7 +78,7 @@ function NoteComposer({ mine, uid, avatar, onClose, onSaved }: { mine: Note | un
       <span className="text-xs text-mute">{body.length}/60</span>{err && <p role="alert" className="text-sm text-red-400">{err}</p>}
       {mine && <button onClick={del} className="text-sm text-red-400">Delete note</button>}</div>
     <p className="px-6 pb-6 text-center text-sm text-mute" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
-      {aud === 'everyone' ? 'Everyone' : aud === 'friends' ? 'Friends' : 'Only you'} can see your note in TEXTORA for 24 hours. <button onClick={() => setPickAud(true)} className="font-semibold text-accent">Change</button></p>
+      {aud === 'everyone' ? 'Everyone' : aud === 'friends' ? 'Friends' : 'Only you'} can see your note in NEXGEN for 24 hours. <button onClick={() => setPickAud(true)} className="font-semibold text-accent">Change</button></p>
     {pickAud && <Sheet onClose={() => setPickAud(false)}><b>Who can see your note</b>{[['friends', 'Friends'], ['everyone', 'Everyone'], ['only_me', 'Only me']].map(([k, l]) => <button key={k} onClick={() => { setAud(k); setPickAud(false) }} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-bg">{l}{aud === k && <Check className="text-accent" />}</button>)}</Sheet>}</div>)
 }
 function NoteReply({ note, who, uid, onClose }: { note: Note; who: P; uid: string; onClose: () => void }) {
@@ -92,13 +94,22 @@ function NoteReply({ note, who, uid, onClose }: { note: Note; who: P; uid: strin
 }
 export default function Textora({ tab = 'chats' }: { tab?: string }) {
   const { session, profile } = useAuth(); const uid = session!.user.id; const online = useOnline(); const nav = useNavigate(); const loc = useLocation(); const myShow = profile?.show_active !== false; const typingMap = useTypingView(tab === 'chats')
+  useTypingTick(); const prevT = useRef<Record<string, string>>({}); useEffect(() => { if (Object.keys(typingMap).some(k => !prevT.current[k])) playTyping(); prevT.current = { ...typingMap } }, [typingMap])
   const t = tab === 'me' ? 'menu' : tab
   const [offline, setOffline] = useState(!navigator.onLine); const [convs, setConvs] = useState<Conv[] | null>(() => cacheGet<Conv[]>(`convs:${uid}`)); const [loadErr, setLoadErr] = useState(''); const [q, setQ] = useState(''); const [arch, setArch] = useState(!!(loc.state as any)?.arch)
   const [friends, setFriends] = useState<P[]>(() => cacheGet<P[]>(`friends:${uid}`) ?? []); const [notes, setNotes] = useState<Note[]>([]); const [pmode, setPmode] = useState('all'); const [reqs, setReqs] = useState<{ id: string; who: P }[]>([])
   const [compose, setCompose] = useState(false); const [newOpen, setNewOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [menu, setMenu] = useState<Conv | null>(null); const [noteSheet, setNoteSheet] = useState(false); const [noteReply, setNoteReply] = useState<{ note: Note; who: P } | null>(null)
   useEffect(() => { const on = () => setOffline(false), off = () => setOffline(true); window.addEventListener('online', on); window.addEventListener('offline', off); return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) } }, [])
+  const pf = useRef<Record<string, string>>({})
+  const prefetch = async (list: any[]) => {
+    for (const c of list.slice(0, 10)) {
+      if (pf.current[c.id] === c.last_at) continue
+      const { data } = await supabase.from('messages').select('*').eq('conversation_id', c.id).order('created_at', { ascending: false }).limit(40)
+      if (data?.length) { cacheSet(`msgs:${uid}:${c.id}`, (data as any[]).reverse().map(m => ({ ...m, reactions: [] }))); pf.current[c.id] = c.last_at }
+    }
+  }
   const load = () => {
-    fetchConvs().then(c => { setConvs(c); setLoadErr(''); cacheSet(`convs:${uid}`, c) }).catch(e => { setConvs(cur => cur ?? []); if (navigator.onLine) setLoadErr(e.message) })
+    fetchConvs().then(c => { setConvs(c); setLoadErr(''); cacheSet(`convs:${uid}`, c); prefetch(c as any[]) }).catch(e => { setConvs(cur => cur ?? []); if (navigator.onLine) setLoadErr(e.message) })
     supabase.from('conversation_members').update({ last_delivered_at: new Date().toISOString() }).eq('user_id', uid).then(() => {})
   }
   const loadNotes = () => supabase.from('notes').select('user_id,body,audience,created_at').gt('created_at', new Date(Date.now() - 864e5).toISOString()).then(({ data }) => { if (data) setNotes(data as Note[]) })
@@ -148,7 +159,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
         <div className="flex gap-2">{([[false, 'Chats'], [true, 'Archived']] as [boolean, string][]).map(([k, l]) => <button key={l} onClick={() => setArch(k)} className="rounded-full px-4 py-1.5 text-sm font-medium" style={arch === k ? { background: 'var(--accent)', color: 'var(--on)' } : { background: 'var(--surface)', color: 'var(--mute)' }}>{l}</button>)}</div>
         {!convs && !loadErr && [0, 1, 2, 3, 4].map(i => <div key={i} className="flex items-center gap-3 py-2"><div className="h-14 w-14 animate-pulse rounded-full bg-surface" /><div className="flex-1 space-y-2"><div className="h-3 w-1/3 animate-pulse rounded bg-surface" /><div className="h-3 w-2/3 animate-pulse rounded bg-surface" /></div></div>)}
         {convs && !shown.length && !loadErr && <p className="py-12 text-center text-mute">{arch ? 'No archived chats.' : q ? 'No match.' : 'No conversations yet. Tap the button at the top to start one.'}</p>}
-        {shown.map(c => { const seen = c.kind === 'direct' && c.last_sender === uid && c.last_kind !== 'system' && ge(c.other_read_at, c.last_at); const tl = c.kind === 'direct' && c.other_id ? typingMap[c.other_id] : undefined
+        {shown.map(c => { const seen = c.kind === 'direct' && c.last_sender === uid && c.last_kind !== 'system' && ge(c.other_read_at, c.last_at); const tl = c.kind === 'direct' ? (typingFresh(c.id) ? 'Typing…' : c.other_id ? typingMap[c.other_id] : undefined) : undefined
           return (<div key={c.id} className="flex items-center gap-2">
             <Link to={`/textora/c/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2">
               <span className="relative shrink-0"><Avatar a={convAv(c)} s={56} />{c.kind === 'group' ? <i className="absolute -bottom-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full border-2 border-bg bg-surface text-mute"><Users size={10} /></i> : myShow && c.show_active && c.other_id && online.has(c.other_id) && <i className="absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-bg bg-green-500" />}</span>

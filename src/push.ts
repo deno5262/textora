@@ -11,8 +11,8 @@ const TOKEN_KEY = 'fcmToken', TRY_KEY = 'pushTry'
 let wired = false
 let currentUid: string | null = null
 
-export type PushStatus = { flag: boolean; native: boolean; perm: string; token: string; saved: string; error: string }
-const status: PushStatus = { flag: PUSH_READY, native: isNative, perm: '-', token: '-', saved: '-', error: '' }
+export type PushStatus = { bubbles: string; flag: boolean; native: boolean; perm: string; token: string; saved: string; error: string }
+const status: PushStatus = { bubbles: BUBBLES ? 'on' : 'off', flag: PUSH_READY, native: isNative, perm: '-', token: '-', saved: '-', error: '' }
 const listeners = new Set<() => void>()
 const set = (p: Partial<PushStatus>) => { Object.assign(status, p); listeners.forEach(f => f()) }
 export function usePushStatus(): PushStatus {
@@ -56,7 +56,7 @@ export async function setupPush(uid: string, force = false) {
     let perm = await PushNotifications.checkPermissions()
     if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') perm = await PushNotifications.requestPermissions()
     set({ perm: perm.receive })
-    if (perm.receive !== 'granted') return set({ error: 'Notifications are blocked. Phone Settings → Apps → Textora → Notifications → Allow.' })
+    if (perm.receive !== 'granted') return set({ error: 'Notifications are blocked. Phone Settings → Apps → Nexgen → Notifications → Allow.' })
     localStorage.setItem(TRY_KEY, String(Date.now()))
     await PushNotifications.register()
   } catch (e) { localStorage.removeItem(TRY_KEY); set({ error: String((e as Error).message ?? e) }) }

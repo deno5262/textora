@@ -9,6 +9,8 @@ import { useTypingView } from './useTyping'
 import { useBackClose } from './useBackClose'
 import { fetchConvs, Conv, convAv, statusOf, ge, dayLabel } from './textora'
 import { playNotify, playSend, playTyping, playSeen } from './sounds'
+import { sendTypingTo } from './typingBus'
+import { createPortal } from 'react-dom'
 import { cacheGet, cacheSet } from './cache'
 import { Avatar } from './ui'
 import { VoicePlayer, computePeaks } from './Voice'
@@ -51,6 +53,7 @@ export default function Chat() {
   useEffect(() => { if (msgs.length) cacheSet(`msgs:${uid}:${cid}`, msgs.filter(m => !m.pending).slice(-60)) }, [msgs])
   const myBg = members.find(m => m.user_id === uid)?.chat_bg ?? null
   useEffect(() => { if (myBg?.startsWith('g:')) supabase.storage.from('chat').createSignedUrl(myBg.slice(2), 3600).then(({ data }) => setBgUrl(data?.signedUrl ?? null)); else setBgUrl(null) }, [myBg])
+  useEffect(() => { const id = setInterval(() => flushOutbox(), 8000); return () => clearInterval(id) }, [])
   const flushOutbox = async () => {
     const q = cacheGet<{ tmp: string; body: string; reply_to: string | null }[]>(outKey) ?? []; if (!q.length || !navigator.onLine) return
     const left: typeof q = []
@@ -98,8 +101,8 @@ export default function Chat() {
   }
   useEffect(() => {
     (async () => {
-      await loadInfo()
-      const { data, error: loadErr } = await supabase.from('messages').select('*, reactions:message_reactions(user_id,emoji)').eq('conversation_id', cid).order('created_at', { ascending: false }).limit(80)
+      const msgQ = Promise.resolve(supabase.from('messages').select('*, reactions:message_reactions(user_id,emoji)').eq('conversation_id', cid).order('created_at', { ascending: false }).limit(60))
+      const [, { data, error: loadErr }] = await Promise.all([loadInfo(), msgQ])
       if (loadErr) return
       const list = ((data ?? []) as Msg[]).reverse(); setMsgs([...list, ...msgsRef.current.filter(m => m.pending)]); sign(list.map(m => m.attachment_path).filter(Boolean) as string[]); markRead()
     })().catch(e => setErr(e.message))
@@ -122,7 +125,7 @@ export default function Chat() {
   const jump = (mid: string) => { setSearchOn(false); setSq(''); setTimeout(() => { const el = document.getElementById('m-' + mid); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('ring-2'); setTimeout(() => el.classList.remove('ring-2'), 1500) } }, 50) }
   const onType = (v: string) => {
     setText(v); const now = Date.now()
-    if (v && now - lastSent.current > 2500) { lastSent.current = now; chan.current?.send({ type: 'broadcast', event: 'typing', payload: { uid } }) }
+    if (v && now - lastSent.current > 2500) { lastSent.current = now; chan.current?.send({ type: 'broadcast', event: 'typing', payload: { uid } }); if (!isGroup && other) sendTypingTo(other.id, cid, uid) }
     if (v && profile?.typing_status_enabled && !isGroup && other && now - lastPub.current > 3000) { lastPub.current = now; supabase.from('typing_status').upsert({ user_id: uid, with_user: other.id, updated_at: new Date().toISOString() }).then(() => {}) }
   }
   const clearTypingStatus = () => { lastPub.current = 0; if (profile?.typing_status_enabled) supabase.from('typing_status').delete().eq('user_id', uid).then(() => {}) }
@@ -137,11 +140,16 @@ export default function Chat() {
       if (error) return setErr(human(error.message)); patchMsg({ id: editing.id, body: t, edited_at: new Date().toISOString() }); setEditing(null); setText(''); return
     }
     setText('')
-    if (!navigator.onLine) {
-      const tmp = 'tmp-' + crypto.randomUUID(); const o = { tmp, body: t, reply_to: replyTo?.id ?? null }; cacheSet(outKey, [...(cacheGet<any[]>(outKey) ?? []), o])
-      addMsg({ id: tmp, conversation_id: cid, sender_id: uid, kind: 'text', body: t, reply_to: o.reply_to, attachment_path: null, attachment_name: null, attachment_type: null, attachment_size: null, audio_peaks: null, audio_ms: null, forwarded: false, pinned_at: null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), reactions: [], pending: true }); setReplyTo(null); return
-    }
-    try { await insert({ kind: 'text', body: t }) } catch (e) { setErr(human((e as Error).message)); setText(t) }
+    const tmp = 'tmp-' + crypto.randomUUID(); const o = { tmp, body: t, reply_to: replyTo?.id ?? null }
+    addMsg({ id: tmp, conversation_id: cid, sender_id: uid, kind: 'text', body: t, reply_to: o.reply_to, attachment_path: null, attachment_name: null, attachment_type: null, attachment_size: null, audio_peaks: null, audio_ms: null, forwarded: false, pinned_at: null, edited_at: null, deleted_at: null, created_at: new Date().toISOString(), reactions: [], pending: true })
+    setReplyTo(null); playSend(); clearTypingStatus()
+    const queue = () => cacheSet(outKey, [...(cacheGet<any[]>(outKey) ?? []), o])
+    if (!navigator.onLine) { queue(); return }
+    try {
+      const { data, error } = await supabase.from('messages').insert({ conversation_id: cid, sender_id: uid, kind: 'text', body: t, reply_to: o.reply_to }).select('*').single()
+      if (error || !data) { queue(); setErr(human(error?.message ?? 'Not sent yet, will retry')); return }
+      const real = { ...(data as Msg), reactions: [] as R[] }; setMsgs(cur => [...cur.filter(x => x.id !== tmp && x.id !== real.id), real])
+    } catch { queue() }
   }
   const upload = async (blob: Blob | File, ext: string, type: string) => {
     const path = `${uid}/${cid}/${crypto.randomUUID()}.${ext}`; const { error } = await supabase.storage.from('chat').upload(path, blob, { contentType: type }); if (error) throw error; return path
@@ -231,6 +239,27 @@ export default function Chat() {
   const pinned = [...msgs].filter(m => m.pinned_at && !m.deleted_at).sort((a, b) => b.pinned_at!.localeCompare(a.pinned_at!))[0]
   const readers = (m: Msg) => members.filter(x => x.user_id !== uid && ge(x.last_read_at, m.created_at)); const delivered = (m: Msg) => members.some(x => x.user_id !== uid && ge(x.last_delivered_at, m.created_at))
   const lastMine = [...msgs].reverse().find(m => m.sender_id === uid && m.kind !== 'system')?.id
+  const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
+  const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
+  const gs = useRef({ x: 0, y: 0, timer: 0, swiping: false, long: false, dx: 0 })
+  const tStart = (e: React.TouchEvent, m: Msg, mine: boolean) => {
+    if (m.pending || m.deleted_at) return
+    const t0 = e.touches[0]; const top = (e.currentTarget as HTMLElement).getBoundingClientRect().top
+    window.clearTimeout(gs.current.timer)
+    gs.current = { x: t0.clientX, y: t0.clientY, swiping: false, long: false, dx: 0, timer: window.setTimeout(() => { gs.current.long = true; navigator.vibrate?.(18); setPick({ m, top, mine }) }, 380) }
+  }
+  const tMove = (e: React.TouchEvent, m: Msg) => {
+    if (gs.current.long) return
+    const t0 = e.touches[0]; const dx = t0.clientX - gs.current.x, dy = t0.clientY - gs.current.y
+    if (!gs.current.swiping && (Math.abs(dy) > 10 || dx < -10)) { window.clearTimeout(gs.current.timer); return }
+    if (dx > 10) { window.clearTimeout(gs.current.timer); gs.current.swiping = true }
+    if (gs.current.swiping) { const v = Math.min(80, dx * 0.6); gs.current.dx = v; setDrag({ id: m.id, dx: v }) }
+  }
+  const tEnd = (m: Msg) => {
+    window.clearTimeout(gs.current.timer)
+    if (gs.current.swiping && gs.current.dx > 44) { navigator.vibrate?.(12); setReplyTo(m) }
+    gs.current.swiping = false; setDrag(null)
+  }
   const actions: [typeof Reply, string, () => void, boolean][] = sheet ? [[Reply, 'Reply', () => { setReplyTo(sheet); setSheet(null) }, true], [Copy, 'Copy text', () => { navigator.clipboard?.writeText(sheet.body).catch(() => {}); setSheet(null) }, sheet.kind === 'text'],
     [Forward, 'Forward', () => openFwd(sheet), true], [sheet.pinned_at ? PinOff : Pin, sheet.pinned_at ? 'Unpin' : 'Pin', () => pin(sheet), true],
     [Pencil, 'Edit', () => { setEditing(sheet); setText(sheet.body); setSheet(null) }, sheet.sender_id === uid && sheet.kind === 'text'], [Trash2, 'Delete for everyone', () => del(sheet), sheet.sender_id === uid],
@@ -260,9 +289,9 @@ export default function Chat() {
         const rd = m.id === lastMine ? readers(m) : []
         return (<div key={m.id}>{dayEl}
           {isGroup && !mine && !sameP && <p className="ml-9 mt-1 text-xs text-mute">{nameOf(m.sender_id)}</p>}
-          <div id={'m-' + m.id} className={`${sameP ? 'mt-0.5' : 'mt-2'} flex items-end gap-1 rounded-2xl ring-accent ${mine ? 'flex-row-reverse' : ''}`}>
+          <div id={'m-' + m.id} className={`relative ${sameP ? 'mt-0.5' : 'mt-2'} flex items-end gap-1 rounded-2xl ring-accent ${mine ? 'flex-row-reverse' : ''}`} style={drag?.id === m.id ? { transform: `translateX(${drag.dx}px)` } : { transition: 'transform .18s' }}>{drag?.id === m.id && drag.dx > 24 && <span className="absolute -left-10 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-surface text-accent"><Reply size={16} /></span>}
             {!mine && <div className="w-7 shrink-0">{!sameN && <Avatar a={sender ?? { avatar_url: null, full_name: '?', username: '?' }} s={28} />}</div>}
-            <div className={`max-w-[76%] px-3 py-2 ${rad} ${mine ? '' : 'bg-surface'}`} style={mine ? GRAD : undefined}>
+            <div className={`max-w-[76%] px-3 py-2 ${rad} ${mine ? '' : 'bg-surface'}`} style={{ ...(mine ? GRAD : {}), touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties} onTouchStart={e => tStart(e, m, mine)} onTouchMove={e => tMove(e, m)} onTouchEnd={() => tEnd(m)} onTouchCancel={() => tEnd(m)} onContextMenu={e => e.preventDefault()}>
               {m.forwarded && !m.deleted_at && <p className="mb-0.5 text-[10px] italic opacity-70">↪ Forwarded</p>}
               {qt && <div className="mb-1 rounded-lg border-l-2 border-current bg-black/10 px-2 py-1 text-xs opacity-80"><b>{qt.who}</b><p className="line-clamp-2 break-words">{qt.text}</p></div>}
               {m.deleted_at ? <p className="italic opacity-70">This message was deleted</p>
@@ -276,8 +305,15 @@ export default function Chat() {
             {!m.deleted_at && !m.pending && <button onClick={() => setSheet(m)} aria-label="Message options" className="p-1 text-mute opacity-50"><MoreHorizontal size={16} /></button>}</div>
           {!sameN && <p className={`mt-0.5 flex items-center gap-1 text-[10px] text-mute ${mine ? 'justify-end' : 'ml-9'}`}>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             {mine && !m.deleted_at && m.id !== lastMine && (delivered(m) ? <CheckCheck size={12} /> : <Check size={12} />)}</p>}
-          {m.id === lastMine && !m.deleted_at && <div className="mt-0.5 flex justify-end gap-0.5">{rd.length ? <>{rd.slice(0, 5).map(r => <Avatar key={r.user_id} a={r.profile} s={14} />)}{rd.length > 5 && <span className="text-[10px] text-mute">+{rd.length - 5}</span>}</> : <span className="text-[10px] text-mute">{m.pending ? 'Waiting for network…' : delivered(m) ? 'Delivered' : 'Sent'}</span>}</div>}</div>) })}
-      {typing && <div className="mt-2 flex items-end gap-1"><div className="w-7 shrink-0"><Avatar a={prof(typing) ?? headAv} s={28} /></div><div aria-label="Typing" className="flex items-center gap-1 rounded-[20px] bg-surface px-4 py-3"><i className="tdot" /><i className="tdot" style={{ animationDelay: '.2s' }} /><i className="tdot" style={{ animationDelay: '.4s' }} /></div></div>}<div ref={endRef} /></div>
+          {m.id === lastMine && !m.deleted_at && <div className="mt-0.5 flex justify-end gap-0.5">{rd.length ? <>{rd.slice(0, 5).map(r => <Avatar key={r.user_id} a={r.profile} s={14} />)}{rd.length > 5 && <span className="text-[10px] text-mute">+{rd.length - 5}</span>}</> : <span className="text-[10px] text-mute">{m.pending ? (offline ? 'Waiting for network…' : 'Sending…') : delivered(m) ? 'Delivered' : 'Sent'}</span>}</div>}</div>) })}
+      {typing && <div className="mt-2 flex items-end gap-1"><div className="w-7 shrink-0"><Avatar a={prof(typing) ?? headAv} s={28} /></div><div aria-label="Typing" className="flex items-center gap-1 rounded-[20px] bg-surface px-4 py-3"><i className="tdot" /><i className="tdot" style={{ animationDelay: '.2s' }} /><i className="tdot" style={{ animationDelay: '.4s' }} /></div></div>}{pick && createPortal(<div className="fixed inset-0 z-[80]" onClick={() => setPick(null)} style={{ background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(3px)' }}>
+        <div className="absolute flex gap-0.5 rounded-full bg-surface px-2 py-1.5 shadow-2xl" style={{ top: Math.max(80, pick.top - 64), [pick.mine ? 'right' : 'left']: 12 } as React.CSSProperties} onClick={e => e.stopPropagation()}>
+          {['❤️', '😂', '😮', '😢', '😡', '👍'].map((em, i) => <button key={em} onClick={() => { react(pick.m, em); setPick(null) }} className="emo-rise p-1.5 text-[28px] leading-none transition-transform active:scale-125" style={{ animationDelay: `${i * 45}ms` }}>{em}</button>)}</div>
+        <div className="emo-rise absolute flex flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl" style={{ top: Math.max(80, pick.top - 64) + 66, [pick.mine ? 'right' : 'left']: 12, minWidth: 190, animationDelay: '120ms' } as React.CSSProperties} onClick={e => e.stopPropagation()}>
+          <button onClick={() => { setReplyTo(pick.m); setPick(null) }} className="flex items-center gap-3 px-4 py-3 text-left"><Reply size={18} />Reply</button>
+          {pick.m.kind === 'text' && <button onClick={() => { navigator.clipboard?.writeText(pick.m.body); setPick(null) }} className="flex items-center gap-3 border-t border-line px-4 py-3 text-left"><Copy size={18} />Copy</button>}
+          <button onClick={() => { const m = pick.m; setPick(null); setSheet(m) }} className="flex items-center gap-3 border-t border-line px-4 py-3 text-left"><MoreHorizontal size={18} />More</button></div>
+      </div>, document.body)}<div ref={endRef} /></div>
     <div className="border-t border-line bg-bg p-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
       {err && <p role="alert" className="px-2 pb-1 text-sm text-red-400">{err}</p>}
       {!isGroup && iBlocked ? <div className="flex items-center justify-between px-2 py-1 text-sm"><span className="text-mute">You blocked this person.</span><button onClick={toggleBlock} className="rounded-full border border-line px-3 py-1">Unblock</button></div>

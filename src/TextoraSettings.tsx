@@ -6,6 +6,7 @@ import { playNotify } from './sounds'
 import { usePushStatus, setupPush } from './push'
 import { useBackClose } from './useBackClose'
 import { Avatar } from './ui'
+import { loadCustom, saveCustom, clearCustom, Custom } from './customTheme'
 
 /* ---------- small building blocks (kept simple on purpose) ---------- */
 const Switch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
@@ -69,11 +70,20 @@ function PushStatus() {
   const { profile } = useAuth(); const s = usePushStatus()
   const line = (k: string, v: string, ok?: boolean) => <p className="flex justify-between gap-3 text-sm"><span className="text-mute">{k}</span><span className={ok === undefined ? '' : ok ? 'text-green-400' : 'text-red-400'}>{v}</span></p>
   return (<div className="flex flex-col gap-1.5 px-4 py-3">
-    {line('Android app', s.native ? 'yes' : 'no', s.native)}{line('Push in this build', s.flag ? 'ON' : 'OFF', s.flag)}{line('Permission', s.perm, s.perm === 'granted')}{line('Device token', s.token, s.token !== '-')}{line('Saved to server', s.saved, s.saved.startsWith('saved'))}
+    {line('Android app', s.native ? 'yes' : 'no', s.native)}{line('Push in this build', s.flag ? 'ON' : 'OFF', s.flag)}{line('Permission', s.perm, s.perm === 'granted')}{line('Bubble mode', s.bubbles, s.bubbles === 'on')}{line('Device token', s.token, s.token !== '-')}{line('Saved to server', s.saved, s.saved.startsWith('saved'))}
     {s.error && <p className="rounded-lg bg-red-950 p-2 text-xs text-red-300">{s.error}</p>}
     <button onClick={() => profile && setupPush(profile.id, true)} className="mt-1 rounded-xl bg-accent px-4 py-2 font-semibold text-on">Retry</button></div>)
 }
 
+function CustomThemeCard() {
+  const base: Custom = { bg: '#0e1127', surface: '#1b1f3a', accent: '#5b6cff' }
+  const [c, setC] = useState<Custom>(loadCustom() ?? base)
+  const pick = (k: keyof Custom, v: string) => { const n = { ...c, [k]: v }; setC(n); saveCustom(n) }
+  return (<div className="p-3"><p className="mb-2 text-sm text-mute">Make your own colours</p>
+    <div className="grid grid-cols-3 gap-2">{([['bg', 'Background'], ['surface', 'Cards'], ['accent', 'Buttons']] as const).map(([k, l]) => (
+      <label key={k} className="flex flex-col items-center gap-1 text-xs"><input type="color" value={c[k]} onChange={e => pick(k, e.target.value)} className="h-12 w-full rounded-lg border border-line bg-transparent" />{l}</label>))}</div>
+    <button onClick={() => { clearCustom(); setC(base) }} className="mt-3 w-full rounded-xl border border-line py-2 text-sm">Reset to app theme</button></div>)
+}
 /* ---------- the page ---------- */
 export function TextoraPrefs() {
   const { profile, refresh, theme, setTheme, session } = useAuth(); const uid = session!.user.id
@@ -87,8 +97,8 @@ export function TextoraPrefs() {
 
     <Group title="Notifications" note="Applies when the app is closed. Notifications never show inside the app while you are using it.">
       <Choice icon={Lock} title="Lock screen" sub="What others can see on your locked phone" value={lock.v} onPick={lock.save}
-        options={[['show', 'Show name and message'], ['name', 'Show name only', 'The message is replaced by “New message”'], ['hide', 'Hide everything', 'Only “Textora: new message”']]} />
-      <Row icon={MessageCircle} title="Chat bubbles" sub="Turn on in phone Settings → Apps → Textora → Notifications → Bubbles" />
+        options={[['show', 'Show name and message'], ['name', 'Show name only', 'The message is replaced by “New message”'], ['hide', 'Hide everything', 'Only “Nexgen: new message”']]} />
+      <Row icon={MessageCircle} title="Chat bubbles" sub="Turn on in phone Settings → Apps → Nexgen → Notifications → Bubbles" />
     </Group>
     {lock.err && <p className="-mt-3 rounded-xl bg-red-950 p-3 text-xs text-red-300">Couldn't save: {lock.err}</p>}
 
@@ -106,6 +116,7 @@ export function TextoraPrefs() {
         <div className="grid grid-cols-2 gap-2">{THEMES.map(([k, name]) => (
           <button key={k} onClick={() => setTheme(k)} className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 text-left text-sm ${theme === k ? 'border-accent text-accent' : 'border-line'}`}>
             <span className="truncate">{name}</span><span className="flex shrink-0 gap-1">{(THEME_COLORS[k] ?? []).map((c, i) => <i key={i} className="h-3.5 w-3.5 rounded-full border border-line" style={{ background: c }} />)}</span></button>))}</div></div>
+      <CustomThemeCard />
     </Group>
 
     <Group title="Privacy" note="Active status is an estimate based on this app being open.">
@@ -125,7 +136,7 @@ export function TextoraPrefs() {
     <Group title="Help">
       <Row icon={Wrench} title="Notification problems?" sub="Check why alerts are not arriving" onClick={() => setFix(f => !f)} right={<ChevronRight size={18} className={`text-mute transition-transform ${fix ? 'rotate-90' : ''}`} />} />
       {fix && <PushStatus />}
-      <Row icon={Smartphone} title="Textora" sub="Version 0.2" />
+      <Row icon={Smartphone} title="Nexgen" sub="Next generation messaging · Version 0.3" />
     </Group>
 
     <Group title="Account"><Row icon={Bell} title="Log out" danger onClick={async () => { const { dropPushToken } = await import('./push'); await dropPushToken(); await supabase.auth.signOut() }} /></Group>

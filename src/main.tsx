@@ -12,6 +12,8 @@ import ErrorBoundary from './ErrorBoundary'
 import { PresenceProvider } from './Presence'
 import { initNative } from './native'
 
+import { applyCustom } from './customTheme'
+applyCustom()
 initNative()
 
 // HashRouter: works reliably inside the Android WebView (no server-side routing needed).
