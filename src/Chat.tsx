@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus } from 'lucide-react'
+import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus, Phone, Video } from 'lucide-react'
 import { supabase } from './supabase'
 import { compress } from './image'
 import { useAuth } from './AuthContext'
@@ -11,6 +11,7 @@ import { fetchConvs, Conv, convAv, statusOf, ge, dayLabel } from './textora'
 import { playNotify, playSend, playTyping, playSeen } from './sounds'
 import { sendTypingTo } from './typingBus'
 import { createPortal } from 'react-dom'
+import { useCall } from './calls'
 import { cacheGet, cacheSet } from './cache'
 import { Avatar } from './ui'
 import { VoicePlayer, computePeaks } from './Voice'
@@ -226,7 +227,10 @@ export default function Chat() {
     const { error } = await supabase.from('user_reports').insert({ reporter_id: uid, target_id: target, conversation_id: cid, message_id: rep.msg?.id ?? null, reason })
     setRepDone(error ? error.message : 'Thanks. We will review this report.')
   }
-  const minimize = () => nav('/textora')
+  const { startCall } = useCall()
+  const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
+  const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
+  const gs = useRef({ x: 0, y: 0, timer: 0, swiping: false, long: false, dx: 0 })
   if (conv === undefined) return <div className="fixed inset-0 z-40 grid place-items-center bg-bg p-6 text-center text-mute">{err ? 'Could not open this chat: ' + err : offline ? 'No saved copy of this chat yet. Connect to the internet to open it.' : 'Loading…'}</div>
   if (!conv || (!isGroup && !other)) return <div className="fixed inset-0 z-40 grid place-items-center bg-bg p-6 text-center"><div><p className="mb-3 text-mute">Conversation not found.{err ? ' ' + err : ''}</p><button className="btn" onClick={() => nav('/textora')}>Back to TEXTORA</button></div></div>
   const bgStyle = myBg?.startsWith('p:') && PRE[myBg.slice(2)] ? { background: PRE[myBg.slice(2)] } : bgUrl ? { backgroundImage: `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined
@@ -239,9 +243,6 @@ export default function Chat() {
   const pinned = [...msgs].filter(m => m.pinned_at && !m.deleted_at).sort((a, b) => b.pinned_at!.localeCompare(a.pinned_at!))[0]
   const readers = (m: Msg) => members.filter(x => x.user_id !== uid && ge(x.last_read_at, m.created_at)); const delivered = (m: Msg) => members.some(x => x.user_id !== uid && ge(x.last_delivered_at, m.created_at))
   const lastMine = [...msgs].reverse().find(m => m.sender_id === uid && m.kind !== 'system')?.id
-  const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
-  const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
-  const gs = useRef({ x: 0, y: 0, timer: 0, swiping: false, long: false, dx: 0 })
   const tStart = (e: React.TouchEvent, m: Msg, mine: boolean) => {
     if (m.pending || m.deleted_at) return
     const t0 = e.touches[0]; const top = (e.currentTarget as HTMLElement).getBoundingClientRect().top
@@ -269,7 +270,7 @@ export default function Chat() {
       <button onClick={() => nav('/textora')} aria-label="Back" className="p-2"><ArrowLeft /></button>
       <button onClick={() => (isGroup ? setGroupInfo(true) : undefined)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><span className="relative"><Avatar a={headAv} s={40} />{!isGroup && myShow && other!.show_active && online.has(other!.id) && <i className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-bg bg-green-500" />}</span>
         <div className="min-w-0"><b className="flex items-center gap-1 truncate">{headName}{isGroup && <Users size={13} className="shrink-0 text-mute" />}</b><span className={`block truncate text-xs ${typing || (other && typingMap[other.id]) ? 'text-accent' : 'text-mute'}`}>{status}</span></div></button>
-      {localStorage.getItem('bubblesOn') !== 'off' && <button onClick={minimize} aria-label="Minimize to bubble" className="p-2 text-mute"><Minimize2 size={20} /></button>}
+      {!isGroup && other && <><button onClick={() => startCall(other as any, cid, 'audio')} aria-label="Voice call" className="p-2 text-accent"><Phone size={20} /></button><button onClick={() => startCall(other as any, cid, 'video')} aria-label="Video call" className="p-2 text-accent"><Video size={21} /></button></>}
       <button onClick={() => setSearchOn(!searchOn)} aria-label="Search in chat" className="p-2 text-mute"><Search size={20} /></button>
       <button onClick={() => setMenu(true)} aria-label="Menu" className="p-2 text-mute"><MoreVertical size={20} /></button></header>
     {searchOn && <div className="border-b border-line bg-surface p-2"><input autoFocus className="w-full rounded-full border border-line bg-bg px-4 py-2 outline-none" placeholder="Search in this chat" value={sq} onChange={e => setSq(e.target.value)} />

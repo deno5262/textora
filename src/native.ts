@@ -10,6 +10,7 @@ export function initNative() {
   App.getLaunchUrl().then(r => { if (r?.url) openChat(r.url) }).catch(() => {})
   // Android hardware back button: close sheets / go back; at the chat list, send app to background (like WhatsApp).
   App.addListener('backButton', () => {
+    if (document.body.dataset.call) return   // ignore back while in a call
     const sheetOpen = ((history.state as any)?.__d ?? 0) > 0   // a sheet/overlay pushed a history entry
     const atRoot = location.hash === '' || location.hash === '#/' || location.hash === '#/textora'
     if (sheetOpen || !atRoot) history.back(); else App.minimizeApp()
