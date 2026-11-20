@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus, Phone, Video } from 'lucide-react'
+import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus, Phone, Video, Keyboard } from 'lucide-react'
 import { supabase } from './supabase'
 import { compress } from './image'
 import { useAuth } from './AuthContext'
@@ -12,6 +12,8 @@ import { playNotify, playSend, playTyping, playSeen } from './sounds'
 import { sendTypingTo } from './typingBus'
 import { createPortal } from 'react-dom'
 import { useCall } from './calls'
+import HeaderTray from './HeaderTray'
+import ThemeMenu from './ThemeMenu'
 import { cacheGet, cacheSet } from './cache'
 import { Avatar } from './ui'
 import { VoicePlayer, computePeaks } from './Voice'
@@ -228,6 +230,9 @@ export default function Chat() {
     setRepDone(error ? error.message : 'Thanks. We will review this report.')
   }
   const { startCall } = useCall()
+  const [tAllow, setTAllow] = useState(false)
+  useEffect(() => { if (isGroup || !other) return; supabase.from('typing_allow').select('viewer').eq('owner', uid).eq('viewer', other.id).maybeSingle().then(({ data }) => setTAllow(!!data)) }, [other?.id])
+  const toggleTypingAllow = async () => { if (!other) return; setMenu(false); const on = !tAllow; setTAllow(on); if (on) await supabase.from('typing_allow').insert({ owner: uid, viewer: other.id }); else await supabase.from('typing_allow').delete().eq('owner', uid).eq('viewer', other.id) }
   const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
   const gs = useRef({ x: 0, y: 0, timer: 0, swiping: false, long: false, dx: 0 })
@@ -270,8 +275,10 @@ export default function Chat() {
       <button onClick={() => nav('/textora')} aria-label="Back" className="p-2"><ArrowLeft /></button>
       <button onClick={() => (isGroup ? setGroupInfo(true) : undefined)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><span className="relative"><Avatar a={headAv} s={40} />{!isGroup && myShow && other!.show_active && online.has(other!.id) && <i className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-bg bg-green-500" />}</span>
         <div className="min-w-0"><b className="flex items-center gap-1 truncate">{headName}{isGroup && <Users size={13} className="shrink-0 text-mute" />}</b><span className={`block truncate text-xs ${typing || (other && typingMap[other.id]) ? 'text-accent' : 'text-mute'}`}>{status}</span></div></button>
-      {!isGroup && other && <><button onClick={() => startCall(other as any, cid, 'audio')} aria-label="Voice call" className="p-2 text-accent"><Phone size={20} /></button><button onClick={() => startCall(other as any, cid, 'video')} aria-label="Video call" className="p-2 text-accent"><Video size={21} /></button></>}
-      <button onClick={() => setSearchOn(!searchOn)} aria-label="Search in chat" className="p-2 text-mute"><Search size={20} /></button>
+      <HeaderTray>
+        {!isGroup && other && <><button onClick={() => startCall(other as any, cid, 'audio')} aria-label="Voice call" className="p-2 text-accent"><Phone size={20} /></button><button onClick={() => startCall(other as any, cid, 'video')} aria-label="Video call" className="p-2 text-accent"><Video size={21} /></button></>}
+        <span className="grid h-9 w-9 place-items-center"><ThemeMenu /></span>
+        <button onClick={() => setSearchOn(!searchOn)} aria-label="Search in chat" className="p-2 text-mute"><Search size={20} /></button></HeaderTray>
       <button onClick={() => setMenu(true)} aria-label="Menu" className="p-2 text-mute"><MoreVertical size={20} /></button></header>
     {searchOn && <div className="border-b border-line bg-surface p-2"><input autoFocus className="w-full rounded-full border border-line bg-bg px-4 py-2 outline-none" placeholder="Search in this chat" value={sq} onChange={e => setSq(e.target.value)} />
       <div className="max-h-48 overflow-y-auto">{sres.map(m => <button key={m.id} onClick={() => jump(m.id)} className="block w-full border-b border-line px-2 py-2 text-left text-sm"><span className="text-xs text-mute">{dayLabel(m.created_at)} · {nameOf(m.sender_id)}</span><p className="truncate">{m.body}</p></button>)}
@@ -331,6 +338,7 @@ export default function Chat() {
       {actions.map(([I, l, fn, ok]) => ok && <button key={l} onClick={fn} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg ${l.startsWith('Delete') || l.startsWith('Report') ? 'text-red-400' : ''}`}><I size={20} />{l}</button>)}</Sheet>}
     {menu && <Sheet onClose={() => setMenu(false)}>
       <button onClick={() => { setMenu(false); setThemeOpen(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Palette size={20} className="text-accent" />Chat theme</button>
+      {!isGroup && <button onClick={toggleTypingAllow} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Keyboard size={20} className="text-accent" /><span>{tAllow ? 'Hide my typing status from this person' : 'Show my typing status to this person'}<span className="block text-xs text-mute">Used when “Who can see it” is set to Selected friends</span></span></button>}
       {isGroup && <button onClick={() => { setMenu(false); setGroupInfo(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Users size={20} className="text-accent" />Group info & members</button>}
       <button onClick={toggleMute} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg">{muted ? <Bell size={20} className="text-accent" /> : <BellOff size={20} className="text-accent" />}{muted ? 'Unmute notifications' : 'Mute notifications'}</button>
       {!isGroup && <button onClick={toggleBlock} className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-red-400 hover:bg-bg"><Ban size={20} />{iBlocked ? 'Unblock' : 'Block'}</button>}

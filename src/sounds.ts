@@ -1,5 +1,5 @@
 let ctx: AudioContext | null = null
-const get = () => { if (!ctx) { const A = (window as any).AudioContext || (window as any).webkitAudioContext; ctx = new A() as AudioContext } if (ctx.state === 'suspended') ctx.resume(); return ctx }
+const get = () => { if (document.body.dataset.call) throw new Error('quiet during call'); if (!ctx) { const A = (window as any).AudioContext || (window as any).webkitAudioContext; ctx = new A() as AudioContext } if (ctx.state === 'suspended') ctx.resume(); return ctx }
 const on = (k: string) => localStorage.getItem(k) !== 'off'
 const vol = () => ({ low: 0.3, mid: 0.6, high: 1 } as Record<string, number>)[localStorage.getItem('notifyVol') ?? 'high'] ?? 1
 function tone(c: AudioContext, f: number, t0: number, d: number, g: number, type: OscillatorType = 'sine') {

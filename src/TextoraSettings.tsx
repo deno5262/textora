@@ -66,6 +66,27 @@ function BlockedSheet({ onClose }: { onClose: () => void }) {
     <p className="pt-2 text-xs text-mute">Blocked people can't message you.</p></BottomSheet>)
 }
 
+function TypingAllowSheet({ onClose }: { onClose: () => void }) {
+  const { session } = useAuth(); const uid = session!.user.id
+  const [friends, setFriends] = useState<any[] | null>(null); const [allowed, setAllowed] = useState<Set<string>>(new Set())
+  useEffect(() => { (async () => {
+    const { data: fs } = await supabase.from('friendships').select('user_a,user_b'); const ids = (fs ?? []).map((r: any) => (r.user_a === uid ? r.user_b : r.user_a))
+    const [ps, al] = await Promise.all([ids.length ? supabase.from('profiles').select('id,username,full_name,avatar_url').in('id', ids) : Promise.resolve({ data: [] as any[] }), supabase.from('typing_allow').select('viewer').eq('owner', uid)])
+    setFriends((ps.data ?? []) as any[]); setAllowed(new Set(((al.data ?? []) as any[]).map(r => r.viewer)))
+  })() }, [])
+  const flip = async (id: string) => { const n = new Set(allowed); if (n.has(id)) { n.delete(id); await supabase.from('typing_allow').delete().eq('owner', uid).eq('viewer', id) } else { n.add(id); await supabase.from('typing_allow').insert({ owner: uid, viewer: id }) } setAllowed(n) }
+  return (<BottomSheet title="Who can see my typing status" onClose={onClose}>
+    {!friends && <p className="py-4 text-center text-mute">Loading…</p>}
+    {friends && !friends.length && <p className="py-4 text-center text-mute">No friends yet.</p>}
+    {friends?.map(f => <div key={f.id} className="flex items-center gap-3 py-2"><Avatar a={f} s={40} /><span className="min-w-0 flex-1 truncate">{f.full_name || f.username}</span><Switch on={allowed.has(f.id)} onChange={() => flip(f.id)} /></div>)}</BottomSheet>)
+}
+
+function TestPush() {
+  const [msg, setMsg] = useState('')
+  const run = async () => { setMsg('Sending…'); const { data, error } = await supabase.functions.invoke('send-push', { body: { test: true } }); setMsg(error ? 'Failed: ' + error.message : String((data as any)?.info ?? 'Done')) }
+  return (<div className="flex flex-col gap-2 px-4 pb-3"><button onClick={run} className="rounded-xl border border-line px-4 py-2 font-semibold">Send me a test notification</button>{msg && <p className="text-xs text-mute">{msg} — close the app now to see it.</p>}</div>)
+}
+
 function PushStatus() {
   const { profile } = useAuth(); const s = usePushStatus()
   const line = (k: string, v: string, ok?: boolean) => <p className="flex justify-between gap-3 text-sm"><span className="text-mute">{k}</span><span className={ok === undefined ? '' : ok ? 'text-green-400' : 'text-red-400'}>{v}</span></p>
@@ -87,7 +108,7 @@ function CustomThemeCard() {
 /* ---------- the page ---------- */
 export function TextoraPrefs() {
   const { profile, refresh, theme, setTheme, session } = useAuth(); const uid = session!.user.id
-  const [, force] = useState(0); const [blocked, setBlocked] = useState(false); const [fix, setFix] = useState(false)
+  const [, force] = useState(0); const [pickTyping, setPickTyping] = useState(false); const [blocked, setBlocked] = useState(false); const [fix, setFix] = useState(false)
   const lock = useLockPref(uid)
   const set = async (k: string, v: string | boolean) => { await supabase.from('profiles').update({ [k]: v }).eq('id', profile!.id); refresh() }
   const flag = (k: string) => localStorage.getItem(k) !== 'off'; const toggle = (k: string, v: boolean) => { localStorage.setItem(k, v ? 'on' : 'off'); force(n => n + 1) }
@@ -97,8 +118,8 @@ export function TextoraPrefs() {
 
     <Group title="Notifications" note="Applies when the app is closed. Notifications never show inside the app while you are using it.">
       <Choice icon={Lock} title="Lock screen" sub="What others can see on your locked phone" value={lock.v} onPick={lock.save}
-        options={[['show', 'Show name and message'], ['name', 'Show name only', 'The message is replaced by “New message”'], ['hide', 'Hide everything', 'Only “Nexgen: new message”']]} />
-      <Row icon={MessageCircle} title="Chat bubbles" sub="Turn on in phone Settings → Apps → Nexgen → Notifications → Bubbles" />
+        options={[['show', 'Show name and message'], ['name', 'Show name only', 'The message is replaced by “New message”'], ['hide', 'Hide everything', 'Only “TextGen: new message”']]} />
+      <Row icon={MessageCircle} title="Chat bubbles" sub="Turn on in phone Settings → Apps → TextGen → Notifications → Bubbles" />
     </Group>
     {lock.err && <p className="-mt-3 rounded-xl bg-red-950 p-3 text-xs text-red-300">Couldn't save: {lock.err}</p>}
 
@@ -128,18 +149,20 @@ export function TextoraPrefs() {
     <Group title="Typing status" note="Others only see that you are busy in a chat. Never the message itself.">
       <Row icon={Keyboard} title="Show a status while I'm typing" right={<Switch on={typingOn} onChange={v => set('typing_status_enabled', v)} />} />
       {typingOn && <>
-        <Row title="Show who I'm chatting with" sub="Off shows “Chat with another”" right={<Switch on={!!profile?.typing_show_name} onChange={v => set('typing_show_name', v)} />} />
-        <Choice title="Who can see it" value={profile?.typing_visibility ?? 'friends'} onPick={v => set('typing_visibility', v)} options={[['everyone', 'Everyone'], ['friends', 'Friends'], ['private', 'Only me']]} />
-        <Row title="Allow my name in others' status" right={<Switch on={!!profile?.typing_name_consent} onChange={v => set('typing_name_consent', v)} />} /></>}
+        <Row title="Show who I'm chatting with" sub="Off shows “Typing with another”. No one else needs to agree." right={<Switch on={!!profile?.typing_show_name} onChange={v => set('typing_show_name', v)} />} />
+        <Choice title="Who can see it" value={profile?.typing_visibility ?? 'friends'} onPick={v => set('typing_visibility', v)} options={[['everyone', 'Everyone'], ['friends', 'Friends'], ['custom', 'Selected friends'], ['private', 'Only me']]} />
+        {profile?.typing_visibility === 'custom' && <Row title="Choose friends" sub="Only they can see your typing status" onClick={() => setPickTyping(true)} right={<ChevronRight size={18} className="text-mute" />} />}</>}
     </Group>
 
     <Group title="Help">
       <Row icon={Wrench} title="Notification problems?" sub="Check why alerts are not arriving" onClick={() => setFix(f => !f)} right={<ChevronRight size={18} className={`text-mute transition-transform ${fix ? 'rotate-90' : ''}`} />} />
       {fix && <PushStatus />}
-      <Row icon={Smartphone} title="Nexgen" sub="Next generation messaging · Version 0.3" />
+      {fix && <TestPush />}
+      <Row icon={Smartphone} title="TextGen" sub="Next generation messaging · Version 0.4" />
     </Group>
 
     <Group title="Account"><Row icon={Bell} title="Log out" danger onClick={async () => { const { dropPushToken } = await import('./push'); await dropPushToken(); await supabase.auth.signOut() }} /></Group>
     {blocked && <BlockedSheet onClose={() => setBlocked(false)} />}
+    {pickTyping && <TypingAllowSheet onClose={() => setPickTyping(false)} />}
   </div>)
 }

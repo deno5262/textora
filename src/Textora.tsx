@@ -78,7 +78,7 @@ function NoteComposer({ mine, uid, avatar, onClose, onSaved }: { mine: Note | un
       <span className="text-xs text-mute">{body.length}/60</span>{err && <p role="alert" className="text-sm text-red-400">{err}</p>}
       {mine && <button onClick={del} className="text-sm text-red-400">Delete note</button>}</div>
     <p className="px-6 pb-6 text-center text-sm text-mute" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
-      {aud === 'everyone' ? 'Everyone' : aud === 'friends' ? 'Friends' : 'Only you'} can see your note in NEXGEN for 24 hours. <button onClick={() => setPickAud(true)} className="font-semibold text-accent">Change</button></p>
+      {aud === 'everyone' ? 'Everyone' : aud === 'friends' ? 'Friends' : 'Only you'} can see your note in TEXTGEN for 24 hours. <button onClick={() => setPickAud(true)} className="font-semibold text-accent">Change</button></p>
     {pickAud && <Sheet onClose={() => setPickAud(false)}><b>Who can see your note</b>{[['friends', 'Friends'], ['everyone', 'Everyone'], ['only_me', 'Only me']].map(([k, l]) => <button key={k} onClick={() => { setAud(k); setPickAud(false) }} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-bg">{l}{aud === k && <Check className="text-accent" />}</button>)}</Sheet>}</div>)
 }
 function NoteReply({ note, who, uid, onClose }: { note: Note; who: P; uid: string; onClose: () => void }) {

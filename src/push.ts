@@ -56,7 +56,7 @@ export async function setupPush(uid: string, force = false) {
     let perm = await PushNotifications.checkPermissions()
     if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') perm = await PushNotifications.requestPermissions()
     set({ perm: perm.receive })
-    if (perm.receive !== 'granted') return set({ error: 'Notifications are blocked. Phone Settings → Apps → Nexgen → Notifications → Allow.' })
+    if (perm.receive !== 'granted') return set({ error: 'Notifications are blocked. Phone Settings → Apps → TextGen → Notifications → Allow.' })
     localStorage.setItem(TRY_KEY, String(Date.now()))
     await PushNotifications.register()
   } catch (e) { localStorage.removeItem(TRY_KEY); set({ error: String((e as Error).message ?? e) }) }

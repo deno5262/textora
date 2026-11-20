@@ -5,7 +5,7 @@ export function useTypingView(active = true) {
   useEffect(() => {
     if (!active) return
     let stop = false
-    const run = async () => { const { data } = await supabase.rpc('typing_view'); if (stop) return; const m: Record<string, string> = {}; ((data ?? []) as any[]).forEach(r => { m[r.user_id] = r.label }); setMap(m) }
+    const run = async () => { let { data, error } = await supabase.rpc('typing_view2'); if (error) ({ data } = await supabase.rpc('typing_view')); if (stop) return; const m: Record<string, string> = {}; ((data ?? []) as any[]).forEach(r => { m[r.user_id] = r.label }); setMap(m) }
     run(); const id = setInterval(run, 4000)
     return () => { stop = true; clearInterval(id) }
   }, [active])

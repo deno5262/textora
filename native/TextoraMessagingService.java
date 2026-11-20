@@ -94,7 +94,7 @@ public class TextoraMessagingService extends FirebaseMessagingService {
     private static void show(Context ctx, Map<String, String> d, boolean withBubble) {
         String cid = d.get("conversation_id");
         if (cid == null) return;
-        String title = nz(d.get("title"), "Nexgen");
+        String title = nz(d.get("title"), "TextGen");
         String body = nz(d.get("body"), "New message");
         String sender = nz(d.get("sender_name"), title);
         String avatarUrl = nz(d.get("avatar_url"), "");

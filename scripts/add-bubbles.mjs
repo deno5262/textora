@@ -14,11 +14,13 @@ fs.copyFileSync('native/ic_stat_textora.xml', path.join(resDir, 'ic_stat_textora
 // manifest: bubble activity + our FCM service (higher priority than the plugin's)
 const mp = 'android/app/src/main/AndroidManifest.xml'
 let m = fs.readFileSync(mp, 'utf8')
+if (!m.includes('xmlns:tools')) m = m.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ')
 if (!m.includes('BubbleActivity')) {
   const add = `
         <activity android:name=".BubbleActivity" android:allowEmbedded="true" android:resizeableActivity="true" android:documentLaunchMode="always" android:exported="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:theme="@style/AppTheme.NoActionBarLaunch" />
+        <service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />
         <service android:name=".TextoraMessagingService" android:exported="false">
             <intent-filter android:priority="100">
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
