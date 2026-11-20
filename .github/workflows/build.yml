@@ -50,6 +50,9 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_PUSH_READY: ${{ secrets.GOOGLE_SERVICES_JSON != '' && 'on' || 'off' }}
           VITE_NATIVE_BUBBLES: 'on'
+          VITE_TURN_URL: ${{ secrets.VITE_TURN_URL }}
+          VITE_TURN_USER: ${{ secrets.VITE_TURN_USER }}
+          VITE_TURN_PASS: ${{ secrets.VITE_TURN_PASS }}
 
       - name: Create Android project
         run: |
@@ -72,6 +75,9 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_PUSH_READY: ${{ secrets.GOOGLE_SERVICES_JSON != '' && 'on' || 'off' }}
           GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          VITE_TURN_URL: ${{ secrets.VITE_TURN_URL }}
+          VITE_TURN_USER: ${{ secrets.VITE_TURN_USER }}
+          VITE_TURN_PASS: ${{ secrets.VITE_TURN_PASS }}
         run: |
           build_apk() { (cd android && chmod +x gradlew && ./gradlew assembleDebug); }
           if build_apk; then exit 0; fi
