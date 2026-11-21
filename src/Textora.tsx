@@ -1,6 +1,6 @@
 import { useEffect, useState , useRef} from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft, Phone } from 'lucide-react'
+import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft, Phone, User, UserPlus, Trophy } from 'lucide-react'
 import { supabase } from './supabase'
 import { compress } from './image'
 import { useAuth } from './AuthContext'
@@ -151,6 +151,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
   return (<div className="flex min-h-screen flex-col bg-bg text-ink">
     <header className="sticky top-0 z-10 bg-bg px-4 pb-2" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
       <div className="flex items-center gap-3">
+        <Link to="/textora/profile" aria-label="My profile" className="shrink-0">{profile && <Avatar a={profile} s={38} />}</Link>
         <h1 className="flex-1 text-3xl font-black tracking-tight"><span style={{ color: 'var(--accent)' }}>TEXT</span><span style={{ color: 'var(--accent2)' }}>GEN</span></h1>
         <span className="grid h-10 w-10 place-items-center rounded-full bg-surface"><ThemeMenu /></span>
         {t === 'chats' && <button aria-label="New" onClick={() => setCompose(true)} className="grid h-10 w-10 place-items-center rounded-full bg-surface"><MessageSquarePlus size={22} /></button>}</div>
@@ -186,6 +187,9 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
       {t === 'menu' && <div className="flex flex-col"><h2 className="mb-2 text-3xl font-black">Menu</h2>
         <Link to="/textora/settings" className="flex items-center gap-3 py-3">{profile && <Avatar a={profile} s={52} />}<div className="min-w-0"><b className="block truncate text-lg">{profile?.full_name || profile?.username}</b><span className="text-sm text-mute">@{profile?.username} · Settings</span></div></Link>
         <Link to="/textora/settings" className={row}><Cog size={26} /><span className="flex-1 text-lg">Settings</span><ChevronRight className="text-mute" /></Link>
+        <Link to="/textora/profile" className={row}><User size={26} /><span className="flex-1 text-lg">My profile</span><ChevronRight className="text-mute" /></Link>
+        <Link to="/textora/find" className={row}><UserPlus size={26} /><span className="flex-1 text-lg">Find people</span><ChevronRight className="text-mute" /></Link>
+        <Link to="/textora/ranking" className={row}><Trophy size={26} /><span className="flex-1 text-lg">Ranking</span><ChevronRight className="text-mute" /></Link>
         <Link to="/textora/calls" className={row}><Phone size={26} /><span className="flex-1 text-lg">Calls</span><ChevronRight className="text-mute" /></Link>
         <button onClick={() => nav('/textora', { state: { arch: true } })} className={row}><Archive size={26} /><span className="flex-1 text-lg">Archive</span><ChevronRight className="text-mute" /></button>
         <Link to="/textora/people" onClick={() => setPmode('requests')} className={row}><Users size={26} /><span className="flex-1 text-lg">Friend requests</span>{reqs.length > 0 && <span className="rounded-full bg-red-500 px-2 text-xs font-bold text-white">{reqs.length}</span>}<ChevronRight className="text-mute" /></Link>

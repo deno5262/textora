@@ -30,3 +30,7 @@ export async function fetchFriendIds(uid: string): Promise<Set<string>> {
   const { data } = await supabase.from('friendships').select('user_a,user_b')
   return new Set<string>((data ?? []).map((r: any) => (r.user_a === uid ? r.user_b : r.user_a) as string))
 }
+export async function fetchFollowingIds(uid: string): Promise<Set<string>> {
+  const { data } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
+  return new Set<string>((data ?? []).map((r: any) => r.following_id as string))
+}

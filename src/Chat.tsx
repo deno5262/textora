@@ -288,7 +288,7 @@ export default function Chat() {
   return (<div className="fixed inset-0 z-40 mx-auto flex max-w-xl flex-col bg-bg text-ink">
     <header className="flex items-center gap-1 border-b border-line bg-bg px-2 pb-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
       <button onClick={() => nav('/textora')} aria-label="Back" className="p-2"><ArrowLeft /></button>
-      <button onClick={() => (isGroup ? setGroupInfo(true) : undefined)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><span className="relative"><Avatar a={headAv} s={40} />{!isGroup && myShow && other!.show_active && online.has(other!.id) && <i className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-bg bg-green-500" />}</span>
+      <button onClick={() => (isGroup ? setGroupInfo(true) : other && nav('/textora/u/' + other.username))} className="flex min-w-0 flex-1 items-center gap-3 text-left"><span className="relative"><Avatar a={headAv} s={40} />{!isGroup && myShow && other!.show_active && online.has(other!.id) && <i className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-bg bg-green-500" />}</span>
         <div className="min-w-0"><b className="flex items-center gap-1 truncate">{headName}{isGroup && <Users size={13} className="shrink-0 text-mute" />}</b><span className={`block truncate text-xs ${typing || (other && typingMap[other.id]) ? 'text-accent' : 'text-mute'}`}>{status}</span></div></button>
       <HeaderTray>
         <button onClick={() => setSearchOn(!searchOn)} aria-label="Search in chat" className="p-2 text-mute"><Search size={20} /></button>
