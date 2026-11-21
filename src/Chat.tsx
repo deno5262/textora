@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus, Phone, Video, Keyboard } from 'lucide-react'
+import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus, Phone, Video, Keyboard, PhoneIncoming, PhoneOutgoing, PhoneMissed, Film, Camera as CameraIcon } from 'lucide-react'
 import { supabase } from './supabase'
 import { compress } from './image'
 import { useAuth } from './AuthContext'
@@ -14,6 +14,8 @@ import { createPortal } from 'react-dom'
 import { useCall } from './calls'
 import HeaderTray from './HeaderTray'
 import { CallRow, describeCall } from './callLog'
+import ImageEditor from './ImageEditor'
+import { pickGallery, takePhoto } from './pickMedia'
 import ThemeMenu from './ThemeMenu'
 import { cacheGet, cacheSet } from './cache'
 import { Avatar } from './ui'
@@ -158,19 +160,25 @@ export default function Chat() {
   const upload = async (blob: Blob | File, ext: string, type: string) => {
     const path = `${uid}/${cid}/${crypto.randomUUID()}.${ext}`; const { error } = await supabase.storage.from('chat').upload(path, blob, { contentType: type }); if (error) throw error; return path
   }
-  const attach = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; setErr('')
-    const img = f.type.startsWith('image/'); const vid = VIDEO_TYPES.includes(f.type)
-    if (!img && !vid && !FILE_TYPES.includes(f.type)) return setErr('This file type is not supported. Use images, videos, PDF, Office files, TXT, CSV or ZIP.')
-    if (f.size > 20 * 1024 * 1024) return setErr('File is too large (max 20 MB).')
+  const sendAttachment = async (f: File, asDoc = false) => {
+    setErr('')
+    const img = f.type.startsWith('image/'); const vid = VIDEO_TYPES.includes(f.type); const asPhoto = img && !asDoc
+    if (!asDoc && !img && !vid && !FILE_TYPES.includes(f.type)) return setErr('This file type is not supported. Use images, videos, PDF, Office files, TXT, CSV or ZIP.')
+    if (f.size > 50 * 1024 * 1024) return setErr('File is too large (max 50 MB).')
     setBusy(true); let path = ''
     try {
-      const blob = img ? await compress(f, 1280) : f; const ext = img ? 'jpg' : ((f.name.split('.').pop() ?? 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin'); const type = img ? 'image/jpeg' : f.type
+      const blob = asPhoto ? await compress(f, 1600) : f
+      const ext = asPhoto ? 'jpg' : ((f.name.split('.').pop() ?? 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin'); const type = asPhoto ? 'image/jpeg' : (f.type || 'application/octet-stream')
       path = await upload(blob, ext, type)
-      await insert({ kind: img ? 'image' : vid ? 'video' : 'file', attachment_path: path, attachment_name: f.name.slice(0, 120), attachment_type: type, attachment_size: blob.size })
+      await insert({ kind: asPhoto ? 'image' : (vid && !asDoc) ? 'video' : 'file', attachment_path: path, attachment_name: f.name.slice(0, 120), attachment_type: type, attachment_size: blob.size })
     } catch (x) { if (path) await supabase.storage.from('chat').remove([path]); setErr(human((x as Error).message)) }
     setBusy(false)
   }
+  const handlePicked = (files: File[]) => { const imgs = files.filter(f => f.type.startsWith('image/')); files.filter(f => !f.type.startsWith('image/')).forEach(f => sendAttachment(f)); if (imgs.length) setEditQueue(imgs) }
+  const attach = (e: React.ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) handlePicked(fs) }
+  const attachDoc = (e: React.ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; fs.forEach(f => sendAttachment(f, true)) }
+  const pickG = async () => { setAttachOpen(false); const r = await pickGallery(); if (r === null) galRef.current?.click(); else if (r.length) handlePicked(r) }
+  const pickC = async () => { setAttachOpen(false); const r = await takePhoto(); if (r === null) camRef.current?.click(); else if (r.length) handlePicked(r) }
   const finishVoice = async (blob: Blob, secs: number) => {
     if (blob.size < 1500) return setErr('Recording was too short.')
     setBusy(true); let path = ''
@@ -213,7 +221,7 @@ export default function Chat() {
     } catch (x) { if (path) await supabase.storage.from('chat').remove([path]); setErr(human((x as Error).message)); flash('Could not forward: ' + human((x as Error).message)); setFwd(null) }
   }
   const PRE: Record<string, string> = { aurora: 'linear-gradient(160deg,#0f2027,#2c5364)', dusk: 'linear-gradient(160deg,#42275a,#734b6d)', night: 'linear-gradient(160deg,#0f0c29,#302b63,#24243e)', forest: 'linear-gradient(160deg,#134e5e,#71b280)', rose: 'linear-gradient(160deg,#b24592,#f15f79)', ember: 'linear-gradient(160deg,#42275a,#e5383b)', black: '#000' }
-  const setBg = async (v: string | null) => { const { error } = await supabase.from('conversation_members').update({ chat_bg: v }).eq('conversation_id', cid).eq('user_id', uid); if (error) flash('Theme not saved: ' + error.message); setMembers(cur => cur.map(x => (x.user_id === uid ? { ...x, chat_bg: v } : x))); setThemeOpen(false) }
+  const setBg = (v: string | null) => { setMembers(cur => cur.map(x => (x.user_id === uid ? { ...x, chat_bg: v } : x))); setThemeOpen(false); supabase.from('conversation_members').update({ chat_bg: v }).eq('conversation_id', cid).eq('user_id', uid).then(({ error }) => { if (error) flash('Theme not saved: ' + error.message) }) }
   const pickBg = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; e.target.value = ''; if (!f) return
     try { const path = `${uid}/theme-${crypto.randomUUID()}.jpg`; const { error } = await supabase.storage.from('chat').upload(path, await compress(f, 1280), { contentType: 'image/jpeg' }); if (error) throw error; await setBg('g:' + path) } catch (x) { setErr(human((x as Error).message)) }
@@ -234,7 +242,9 @@ export default function Chat() {
   const [tAllow, setTAllow] = useState(false); const [toast, setToast] = useState('')
   const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(''), 2400) }
   const [callRows, setCallRows] = useState<CallRow[]>([])
-  useEffect(() => { if (isGroup) return; const load = () => supabase.from('calls').select('*').eq('conversation_id', cid).order('created_at', { ascending: false }).limit(30).then(({ data }) => { if (data) setCallRows(data as CallRow[]) }); load(); const i = window.setInterval(load, 12000); return () => window.clearInterval(i) }, [cid, isGroup])
+  const [attachOpen, setAttachOpen] = useState(false); const [editQueue, setEditQueue] = useState<File[]>([])
+  const galRef = useRef<HTMLInputElement>(null), camRef = useRef<HTMLInputElement>(null), vidRef = useRef<HTMLInputElement>(null), docRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (isGroup) return; const load = () => supabase.from('calls').select('*').eq('conversation_id', cid).order('created_at', { ascending: false }).limit(30).then(({ data }) => { if (data) setCallRows(cur => (JSON.stringify(cur) === JSON.stringify(data) ? cur : (data as CallRow[]))) }); load(); const i = window.setInterval(load, 12000); return () => window.clearInterval(i) }, [cid, isGroup])
   useEffect(() => { if (isGroup || !other) return; supabase.from('typing_allow').select('viewer').eq('owner', uid).eq('viewer', other.id).maybeSingle().then(({ data }) => setTAllow(!!data)) }, [other?.id])
   const toggleTypingAllow = async () => { if (!other) return; setMenu(false); const on = !tAllow; setTAllow(on); if (on) await supabase.from('typing_allow').insert({ owner: uid, viewer: other.id }); else await supabase.from('typing_allow').delete().eq('owner', uid).eq('viewer', other.id) }
   const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
@@ -296,7 +306,12 @@ export default function Chat() {
       {view.map((m, i) => {
         const prev = view[i - 1], next = view[i + 1]; const d = dayLabel(m.created_at); const showDay = !prev || dayLabel(prev.created_at) !== d
         const dayEl = showDay ? <p className="my-3 text-center text-xs text-mute">{d}</p> : null
-        if (m.kind === 'call') { const cr = (m as any).calldata as CallRow; const d = describeCall(cr, uid); return <div key={m.id}>{dayEl}<div className="my-2 flex justify-center"><button onClick={() => other && startCall(other as any, cid, cr.kind)} className={`flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs ${d.missed ? 'text-red-400' : 'text-mute'}`}>{cr.kind === 'video' ? <Video size={14} /> : <Phone size={14} />}<span>{d.label}</span><span>· {d.time}</span><span className="font-semibold text-accent">Call back</span></button></div></div> }
+        if (m.kind === 'call') { const cr = (m as any).calldata as CallRow; const d = describeCall(cr, uid); const mineC = cr.caller_id === uid
+          const Icon = cr.kind === 'video' ? Video : d.missed ? PhoneMissed : mineC ? PhoneOutgoing : PhoneIncoming
+          return <div key={m.id}>{dayEl}<div className={`mt-2 flex ${mineC ? 'justify-end' : 'justify-start'}`}><button onClick={() => other && startCall(other as any, cid, cr.kind)} className={`flex max-w-[78%] items-center gap-3 rounded-2xl px-3 py-2 text-left ${mineC ? '' : 'bg-surface'}`} style={mineC ? GRAD : undefined}>
+            <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full bg-black/25 ${d.missed ? 'text-red-400' : ''}`}><Icon size={20} /></span>
+            <span className="min-w-0 flex-1"><b className={`block ${d.missed ? 'text-red-400' : ''}`}>{d.title}</b><span className={`block text-sm ${d.missed || d.sub === 'No answer' ? 'text-red-300' : 'opacity-80'}`}>{d.sub}</span></span>
+            <span className="self-end pb-0.5 text-[11px] opacity-70">{d.time}</span></button></div></div> }
         if (m.kind === 'system') return <div key={m.id}>{dayEl}<p className="my-2 text-center text-xs text-mute">{nameOf(m.sender_id)} {m.body}</p></div>
         const mine = m.sender_id === uid; const near = (a?: Msg) => !!a && a.kind !== 'system' && a.kind !== 'call' && a.sender_id === m.sender_id && dayLabel(a.created_at) === d && Math.abs(new Date(a.created_at).getTime() - new Date(m.created_at).getTime()) < 300000
         const sameP = near(prev), sameN = near(next); const qt = m.reply_to ? quote(m) : null; const src = urls[m.attachment_path ?? '']; const sender = prof(m.sender_id)
@@ -339,7 +354,8 @@ export default function Chat() {
           <button onClick={() => stopRec(true)} className="rounded-full border border-line px-3 py-1.5 text-sm">Cancel</button><button onClick={() => stopRec(false)} aria-label="Send voice message" className="grid h-11 w-11 place-items-center rounded-full" style={GRAD}><Send size={20} /></button></div>
         : <>{(replyTo || editing) && <div className="mb-2 flex items-center justify-between rounded-xl bg-surface px-3 py-1.5 text-sm"><span className="min-w-0 truncate text-mute">{editing ? 'Editing message' : 'Replying to ' + quote(replyTo!).text}</span><button aria-label="Cancel" onClick={() => { setReplyTo(null); setEditing(null); setText('') }}><X size={16} /></button></div>}
           <div className="flex items-center gap-2">
-            <label className="cursor-pointer p-2 text-accent"><Paperclip size={22} /><input type="file" hidden disabled={busy || !!editing} onChange={attach} /></label>
+            <button onClick={() => setAttachOpen(true)} disabled={busy || !!editing} aria-label="Attach" className="p-2 text-accent disabled:opacity-50"><Paperclip size={22} /></button>
+            <input ref={galRef} type="file" accept="image/*" multiple hidden onChange={attach} /><input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={attach} /><input ref={vidRef} type="file" accept="video/*" hidden onChange={attach} /><input ref={docRef} type="file" multiple hidden onChange={attachDoc} />
             <input className="min-w-0 flex-1 rounded-full bg-surface px-4 py-2.5 outline-none" maxLength={4000} placeholder={busy ? 'Sending…' : 'Message'} value={text} onChange={e => onType(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
             {text.trim() ? <button onClick={send} aria-label="Send" className="grid h-11 w-11 place-items-center rounded-full" style={GRAD}><Send size={20} /></button>
               : <button onClick={startRec} disabled={busy || !!editing} aria-label="Record voice message" className="grid h-11 w-11 place-items-center rounded-full disabled:opacity-40" style={GRAD}><Mic size={20} /></button>}</div></>}</div>
@@ -352,6 +368,11 @@ export default function Chat() {
       <button onClick={toggleMute} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg">{muted ? <Bell size={20} className="text-accent" /> : <BellOff size={20} className="text-accent" />}{muted ? 'Unmute notifications' : 'Mute notifications'}</button>
       {!isGroup && <button onClick={toggleBlock} className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-red-400 hover:bg-bg"><Ban size={20} />{iBlocked ? 'Unblock' : 'Block'}</button>}
       {!isGroup && <button onClick={() => { setMenu(false); setRep({ msg: null }); setRepDone('') }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-red-400 hover:bg-bg"><Flag size={20} />Report</button>}</Sheet>}
+    {attachOpen && <Sheet onClose={() => setAttachOpen(false)}><b className="mb-3 block">Send</b>
+      <div className="grid grid-cols-4 gap-2 text-center text-xs">
+        {([[ImagePlus, 'Gallery', pickG], [CameraIcon, 'Camera', pickC], [Film, 'Video', () => { setAttachOpen(false); vidRef.current?.click() }], [FileText, 'Document', () => { setAttachOpen(false); docRef.current?.click() }]] as const).map(([I, l, f]) => <button key={l} onClick={f} className="flex flex-col items-center gap-1.5"><span className="grid h-14 w-14 place-items-center rounded-full bg-bg text-accent"><I size={24} /></span>{l}</button>)}</div>
+      <p className="mt-3 text-center text-xs text-mute">“Document” sends photos and videos in original quality.</p></Sheet>}
+    {editQueue[0] && createPortal(<ImageEditor key={editQueue[0].name + editQueue.length} file={editQueue[0]} onCancel={() => setEditQueue(q => q.slice(1))} onDone={(f, asDoc) => { setEditQueue(q => q.slice(1)); sendAttachment(f, asDoc) }} />, document.body)}
     {themeOpen && <Sheet onClose={() => setThemeOpen(false)}><b className="mb-3 block">Chat theme</b>
       <div className="grid grid-cols-4 gap-3">{Object.entries(PRE).map(([k, v]) => <button key={k} aria-label={k} onClick={() => setBg('p:' + k)} className="h-16 rounded-xl border-2" style={{ background: v, borderColor: myBg === 'p:' + k ? 'var(--accent)' : 'var(--line)' }} />)}</div>
       <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border border-line p-3"><ImagePlus size={20} className="text-accent" />Choose from gallery<input type="file" accept="image/*" hidden onChange={pickBg} /></label>

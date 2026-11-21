@@ -151,7 +151,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
   return (<div className="flex min-h-screen flex-col bg-bg text-ink">
     <header className="sticky top-0 z-10 bg-bg px-4 pb-2" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
       <div className="flex items-center gap-3">
-        <h1 className="flex-1 text-3xl font-black tracking-tight"><span style={{ color: 'var(--accent)' }}>TEXT</span><span style={{ color: 'var(--accent2)' }}>ORA</span></h1>
+        <h1 className="flex-1 text-3xl font-black tracking-tight"><span style={{ color: 'var(--accent)' }}>TEXT</span><span style={{ color: 'var(--accent2)' }}>GEN</span></h1>
         <span className="grid h-10 w-10 place-items-center rounded-full bg-surface"><ThemeMenu /></span>
         {t === 'chats' && <button aria-label="New" onClick={() => setCompose(true)} className="grid h-10 w-10 place-items-center rounded-full bg-surface"><MessageSquarePlus size={22} /></button>}</div>
       {(offline || (!convs && !loadErr)) && <p className="mt-1 text-center text-xs text-mute">{offline ? 'Waiting for network… showing saved chats' : ''}</p>}</header>
