@@ -80,7 +80,10 @@ jobs:
           VITE_TURN_PASS: ${{ secrets.VITE_TURN_PASS }}
         run: |
           build_apk() { (cd android && chmod +x gradlew && ./gradlew assembleDebug); }
-          if build_apk; then exit 0; fi
+          if (cd android && chmod +x gradlew && ./gradlew assembleDebug > ../gradle1.log 2>&1); then exit 0; fi
+          err=$(grep -m8 -E "error:|e: |What went wrong|Execution failed|AAPT|Manifest merger|cannot find symbol|does not exist" -A1 gradle1.log | tr '\n' ' ' | tr -d '"%' | cut -c1-700)
+          echo "::warning title=Bubble build error::$err"
+          tail -n 60 gradle1.log || true
           echo "::warning::Native bubble code failed to build. Building WITHOUT bubbles."
           rm -rf android
           VITE_NATIVE_BUBBLES=off npm run build
@@ -89,6 +92,13 @@ jobs:
           if [ -n "$GSJ" ]; then printf '%s' "$GSJ" > android/app/google-services.json; fi
           npx cap sync android
           build_apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bubble-build-log
+          path: gradle1.log
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
