@@ -1,6 +1,6 @@
 import { useEffect, useState , useRef} from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft } from 'lucide-react'
+import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft, Phone } from 'lucide-react'
 import { supabase } from './supabase'
 import { compress } from './image'
 import { useAuth } from './AuthContext'
@@ -67,6 +67,14 @@ function NoteComposer({ mine, uid, avatar, onClose, onSaved }: { mine: Note | un
   const [body, setBody] = useState(mine?.body ?? ''); const [aud, setAud] = useState(mine?.audience ?? 'friends'); const [err, setErr] = useState(''); const [pickAud, setPickAud] = useState(false)
   const save = async () => { const { error } = await supabase.from('notes').upsert({ user_id: uid, body: body.trim(), audience: aud, created_at: new Date().toISOString() }, { onConflict: 'user_id' }); if (error) return setErr(error.message); onSaved(); onClose() }
   const del = async () => { await supabase.from('notes').delete().eq('user_id', uid); onSaved(); onClose() }
+  if (mine) return (<div className="fixed inset-0 z-50 flex flex-col bg-bg text-ink" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className="flex items-center justify-between p-3"><button onClick={onClose} aria-label="Close" className="p-2"><X /></button><b className="text-lg">Your note</b><span className="w-10" /></div>
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+      <div className="relative w-full max-w-[280px] rounded-3xl bg-surface p-4 text-center text-lg">{mine.body}<i className="absolute -bottom-2 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 bg-surface" /></div>
+      <Avatar a={avatar} s={110} />
+      <p className="text-sm text-mute">Shared {new Date(mine.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+      <p className="text-center text-xs text-mute">A shared note can't be edited. Delete it to write a new one.</p>
+      <button onClick={del} className="rounded-full border border-red-500 px-6 py-2 text-red-400">Delete note</button></div></div>)
   return (<div className="fixed inset-0 z-50 flex flex-col bg-bg text-ink" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
     <div className="flex items-center justify-between p-3"><button onClick={onClose} aria-label="Close" className="p-2"><X /></button><b className="text-lg">{mine ? 'Edit note' : 'New note'}</b>
       <button disabled={!body.trim()} onClick={save} className="rounded-full px-4 py-2 font-semibold disabled:opacity-40" style={{ background: 'var(--accent)', color: 'var(--on)' }}>Share</button></div>
@@ -178,6 +186,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
       {t === 'menu' && <div className="flex flex-col"><h2 className="mb-2 text-3xl font-black">Menu</h2>
         <Link to="/textora/settings" className="flex items-center gap-3 py-3">{profile && <Avatar a={profile} s={52} />}<div className="min-w-0"><b className="block truncate text-lg">{profile?.full_name || profile?.username}</b><span className="text-sm text-mute">@{profile?.username} · Settings</span></div></Link>
         <Link to="/textora/settings" className={row}><Cog size={26} /><span className="flex-1 text-lg">Settings</span><ChevronRight className="text-mute" /></Link>
+        <Link to="/textora/calls" className={row}><Phone size={26} /><span className="flex-1 text-lg">Calls</span><ChevronRight className="text-mute" /></Link>
         <button onClick={() => nav('/textora', { state: { arch: true } })} className={row}><Archive size={26} /><span className="flex-1 text-lg">Archive</span><ChevronRight className="text-mute" /></button>
         <Link to="/textora/people" onClick={() => setPmode('requests')} className={row}><Users size={26} /><span className="flex-1 text-lg">Friend requests</span>{reqs.length > 0 && <span className="rounded-full bg-red-500 px-2 text-xs font-bold text-white">{reqs.length}</span>}<ChevronRight className="text-mute" /></Link>
         <button onClick={async () => { await dropPushToken(); await supabase.auth.signOut() }} className={row}><LogOut size={26} /><span className="flex-1 text-left text-lg">Log out</span></button></div>}

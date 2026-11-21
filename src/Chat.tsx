@@ -13,6 +13,7 @@ import { sendTypingTo } from './typingBus'
 import { createPortal } from 'react-dom'
 import { useCall } from './calls'
 import HeaderTray from './HeaderTray'
+import { CallRow, describeCall } from './callLog'
 import ThemeMenu from './ThemeMenu'
 import { cacheGet, cacheSet } from './cache'
 import { Avatar } from './ui'
@@ -202,17 +203,17 @@ export default function Chat() {
     if (m.attachment_path) await supabase.storage.from('chat').remove([m.attachment_path]); patchMsg({ id: m.id, body: '', deleted_at: at, pinned_at: null })
   }
   const pin = async (m: Msg) => { setSheet(null); const { error } = await supabase.rpc('pin_message', { mid: m.id, pin: !m.pinned_at }); if (error) setErr(error.message) }
-  const openFwd = async (m: Msg) => { setSheet(null); setFwd(m); setFwdList(await fetchConvs().catch(() => [])) }
+  const openFwd = async (m: Msg) => { setSheet(null); setFwd(m); setFwdList(cacheGet<Conv[]>(`convs:${uid}`) ?? []); const fresh = await fetchConvs().catch(() => null); if (fresh) setFwdList(fresh) }
   const forwardTo = async (target: string) => {
     const m = fwd!; let path: string | null = null
     try {
       if (m.attachment_path) { path = `${uid}/${target}/${crypto.randomUUID()}.${m.attachment_path.split('.').pop() ?? 'bin'}`; const { error } = await supabase.storage.from('chat').copy(m.attachment_path, path); if (error) throw error }
       const { error } = await supabase.from('messages').insert({ conversation_id: target, sender_id: uid, kind: m.kind, body: m.kind === 'text' ? m.body : '', attachment_path: path, attachment_name: m.attachment_name, attachment_type: m.attachment_type, attachment_size: m.attachment_size, audio_peaks: m.audio_peaks, audio_ms: m.audio_ms, forwarded: true })
-      if (error) throw error; setFwd(null); playSend()
-    } catch (x) { if (path) await supabase.storage.from('chat').remove([path]); setErr(human((x as Error).message)); setFwd(null) }
+      if (error) throw error; setFwd(null); playSend(); flash('Forwarded ✓')
+    } catch (x) { if (path) await supabase.storage.from('chat').remove([path]); setErr(human((x as Error).message)); flash('Could not forward: ' + human((x as Error).message)); setFwd(null) }
   }
   const PRE: Record<string, string> = { aurora: 'linear-gradient(160deg,#0f2027,#2c5364)', dusk: 'linear-gradient(160deg,#42275a,#734b6d)', night: 'linear-gradient(160deg,#0f0c29,#302b63,#24243e)', forest: 'linear-gradient(160deg,#134e5e,#71b280)', rose: 'linear-gradient(160deg,#b24592,#f15f79)', ember: 'linear-gradient(160deg,#42275a,#e5383b)', black: '#000' }
-  const setBg = async (v: string | null) => { await supabase.from('conversation_members').update({ chat_bg: v }).eq('conversation_id', cid).eq('user_id', uid); setMembers(cur => cur.map(x => (x.user_id === uid ? { ...x, chat_bg: v } : x))); setThemeOpen(false) }
+  const setBg = async (v: string | null) => { const { error } = await supabase.from('conversation_members').update({ chat_bg: v }).eq('conversation_id', cid).eq('user_id', uid); if (error) flash('Theme not saved: ' + error.message); setMembers(cur => cur.map(x => (x.user_id === uid ? { ...x, chat_bg: v } : x))); setThemeOpen(false) }
   const pickBg = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; e.target.value = ''; if (!f) return
     try { const path = `${uid}/theme-${crypto.randomUUID()}.jpg`; const { error } = await supabase.storage.from('chat').upload(path, await compress(f, 1280), { contentType: 'image/jpeg' }); if (error) throw error; await setBg('g:' + path) } catch (x) { setErr(human((x as Error).message)) }
@@ -230,7 +231,10 @@ export default function Chat() {
     setRepDone(error ? error.message : 'Thanks. We will review this report.')
   }
   const { startCall } = useCall()
-  const [tAllow, setTAllow] = useState(false)
+  const [tAllow, setTAllow] = useState(false); const [toast, setToast] = useState('')
+  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(''), 2400) }
+  const [callRows, setCallRows] = useState<CallRow[]>([])
+  useEffect(() => { if (isGroup) return; const load = () => supabase.from('calls').select('*').eq('conversation_id', cid).order('created_at', { ascending: false }).limit(30).then(({ data }) => { if (data) setCallRows(data as CallRow[]) }); load(); const i = window.setInterval(load, 12000); return () => window.clearInterval(i) }, [cid, isGroup])
   useEffect(() => { if (isGroup || !other) return; supabase.from('typing_allow').select('viewer').eq('owner', uid).eq('viewer', other.id).maybeSingle().then(({ data }) => setTAllow(!!data)) }, [other?.id])
   const toggleTypingAllow = async () => { if (!other) return; setMenu(false); const on = !tAllow; setTAllow(on); if (on) await supabase.from('typing_allow').insert({ owner: uid, viewer: other.id }); else await supabase.from('typing_allow').delete().eq('owner', uid).eq('viewer', other.id) }
   const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
@@ -238,6 +242,7 @@ export default function Chat() {
   const gs = useRef({ x: 0, y: 0, timer: 0, swiping: false, long: false, dx: 0 })
   if (conv === undefined) return <div className="fixed inset-0 z-40 grid place-items-center bg-bg p-6 text-center text-mute">{err ? 'Could not open this chat: ' + err : offline ? 'No saved copy of this chat yet. Connect to the internet to open it.' : 'Loading…'}</div>
   if (!conv || (!isGroup && !other)) return <div className="fixed inset-0 z-40 grid place-items-center bg-bg p-6 text-center"><div><p className="mb-3 text-mute">Conversation not found.{err ? ' ' + err : ''}</p><button className="btn" onClick={() => nav('/textora')}>Back to TEXTORA</button></div></div>
+  const view: Msg[] = [...msgs, ...callRows.map(c => ({ id: 'call-' + c.id, conversation_id: cid, sender_id: c.caller_id, kind: 'call', body: '', created_at: c.created_at, reactions: [], calldata: c } as any))].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
   const bgStyle = myBg?.startsWith('p:') && PRE[myBg.slice(2)] ? { background: PRE[myBg.slice(2)] } : bgUrl ? { backgroundImage: `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined
   const myShow = profile?.show_active !== false; const typer = typing ? nameOf(typing).split(' ')[0] : ''
   const status = typing ? (isGroup ? `${typer} is typing…` : 'Typing…') : isGroup ? `${members.length} members` : other && typingMap[other.id] ? typingMap[other.id] : myShow && other ? statusOf(online.has(other.id), other.show_active, other.last_active_at) : ''
@@ -276,21 +281,24 @@ export default function Chat() {
       <button onClick={() => (isGroup ? setGroupInfo(true) : undefined)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><span className="relative"><Avatar a={headAv} s={40} />{!isGroup && myShow && other!.show_active && online.has(other!.id) && <i className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-bg bg-green-500" />}</span>
         <div className="min-w-0"><b className="flex items-center gap-1 truncate">{headName}{isGroup && <Users size={13} className="shrink-0 text-mute" />}</b><span className={`block truncate text-xs ${typing || (other && typingMap[other.id]) ? 'text-accent' : 'text-mute'}`}>{status}</span></div></button>
       <HeaderTray>
-        {!isGroup && other && <><button onClick={() => startCall(other as any, cid, 'audio')} aria-label="Voice call" className="p-2 text-accent"><Phone size={20} /></button><button onClick={() => startCall(other as any, cid, 'video')} aria-label="Video call" className="p-2 text-accent"><Video size={21} /></button></>}
-        <span className="grid h-9 w-9 place-items-center"><ThemeMenu /></span>
-        <button onClick={() => setSearchOn(!searchOn)} aria-label="Search in chat" className="p-2 text-mute"><Search size={20} /></button></HeaderTray>
-      <button onClick={() => setMenu(true)} aria-label="Menu" className="p-2 text-mute"><MoreVertical size={20} /></button></header>
+        <button onClick={() => setSearchOn(!searchOn)} aria-label="Search in chat" className="p-2 text-mute"><Search size={20} /></button>
+        <span className="grid h-10 w-10 place-items-center"><ThemeMenu /></span>
+        {!isGroup && other && <button onClick={() => startCall(other as any, cid, 'audio')} aria-label="Voice call" className="p-2 text-accent"><Phone size={20} /></button>}
+        {!isGroup && other && <button onClick={() => startCall(other as any, cid, 'video')} aria-label="Video call" className="p-2 text-accent"><Video size={21} /></button>}
+        <button onClick={() => setMenu(true)} aria-label="Menu" className="p-2 text-mute"><MoreVertical size={20} /></button></HeaderTray>
+    </header>
     {searchOn && <div className="border-b border-line bg-surface p-2"><input autoFocus className="w-full rounded-full border border-line bg-bg px-4 py-2 outline-none" placeholder="Search in this chat" value={sq} onChange={e => setSq(e.target.value)} />
       <div className="max-h-48 overflow-y-auto">{sres.map(m => <button key={m.id} onClick={() => jump(m.id)} className="block w-full border-b border-line px-2 py-2 text-left text-sm"><span className="text-xs text-mute">{dayLabel(m.created_at)} · {nameOf(m.sender_id)}</span><p className="truncate">{m.body}</p></button>)}
         {sq.trim().length >= 2 && !sres.length && <p className="p-3 text-center text-sm text-mute">No messages found.</p>}</div></div>}
     {pinned && <button onClick={() => jump(pinned.id)} className="flex items-center gap-2 border-b border-line bg-surface px-3 py-1.5 text-left text-sm"><Pin size={14} className="shrink-0 text-accent" /><span className="truncate"><b>Pinned</b> · {label(pinned)}</span></button>}
     <div className="flex-1 overflow-y-auto px-3 py-2" style={bgStyle}>
       {!msgs.length && <p className="py-16 text-center text-mute">No messages yet. Say hello 👋</p>}
-      {msgs.map((m, i) => {
-        const prev = msgs[i - 1], next = msgs[i + 1]; const d = dayLabel(m.created_at); const showDay = !prev || dayLabel(prev.created_at) !== d
+      {view.map((m, i) => {
+        const prev = view[i - 1], next = view[i + 1]; const d = dayLabel(m.created_at); const showDay = !prev || dayLabel(prev.created_at) !== d
         const dayEl = showDay ? <p className="my-3 text-center text-xs text-mute">{d}</p> : null
+        if (m.kind === 'call') { const cr = (m as any).calldata as CallRow; const d = describeCall(cr, uid); return <div key={m.id}>{dayEl}<div className="my-2 flex justify-center"><button onClick={() => other && startCall(other as any, cid, cr.kind)} className={`flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs ${d.missed ? 'text-red-400' : 'text-mute'}`}>{cr.kind === 'video' ? <Video size={14} /> : <Phone size={14} />}<span>{d.label}</span><span>· {d.time}</span><span className="font-semibold text-accent">Call back</span></button></div></div> }
         if (m.kind === 'system') return <div key={m.id}>{dayEl}<p className="my-2 text-center text-xs text-mute">{nameOf(m.sender_id)} {m.body}</p></div>
-        const mine = m.sender_id === uid; const near = (a?: Msg) => !!a && a.kind !== 'system' && a.sender_id === m.sender_id && dayLabel(a.created_at) === d && Math.abs(new Date(a.created_at).getTime() - new Date(m.created_at).getTime()) < 300000
+        const mine = m.sender_id === uid; const near = (a?: Msg) => !!a && a.kind !== 'system' && a.kind !== 'call' && a.sender_id === m.sender_id && dayLabel(a.created_at) === d && Math.abs(new Date(a.created_at).getTime() - new Date(m.created_at).getTime()) < 300000
         const sameP = near(prev), sameN = near(next); const qt = m.reply_to ? quote(m) : null; const src = urls[m.attachment_path ?? '']; const sender = prof(m.sender_id)
         const counts: Record<string, number> = {}; m.reactions.forEach(r => { counts[r.emoji] = (counts[r.emoji] ?? 0) + 1 })
         const rad = mine ? `rounded-[20px] ${sameP ? 'rounded-tr-[6px]' : ''} ${sameN ? 'rounded-br-[6px]' : ''}` : `rounded-[20px] ${sameP ? 'rounded-tl-[6px]' : ''} ${sameN ? 'rounded-bl-[6px]' : ''}`
@@ -314,7 +322,8 @@ export default function Chat() {
           {!sameN && <p className={`mt-0.5 flex items-center gap-1 text-[10px] text-mute ${mine ? 'justify-end' : 'ml-9'}`}>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             {mine && !m.deleted_at && m.id !== lastMine && (delivered(m) ? <CheckCheck size={12} /> : <Check size={12} />)}</p>}
           {m.id === lastMine && !m.deleted_at && <div className="mt-0.5 flex justify-end gap-0.5">{rd.length ? <>{rd.slice(0, 5).map(r => <Avatar key={r.user_id} a={r.profile} s={14} />)}{rd.length > 5 && <span className="text-[10px] text-mute">+{rd.length - 5}</span>}</> : <span className="text-[10px] text-mute">{m.pending ? (offline ? 'Waiting for network…' : 'Sending…') : delivered(m) ? 'Delivered' : 'Sent'}</span>}</div>}</div>) })}
-      {typing && <div className="mt-2 flex items-end gap-1"><div className="w-7 shrink-0"><Avatar a={prof(typing) ?? headAv} s={28} /></div><div aria-label="Typing" className="flex items-center gap-1 rounded-[20px] bg-surface px-4 py-3"><i className="tdot" /><i className="tdot" style={{ animationDelay: '.2s' }} /><i className="tdot" style={{ animationDelay: '.4s' }} /></div></div>}{pick && createPortal(<div className="fixed inset-0 z-[80]" onClick={() => setPick(null)} style={{ background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(3px)' }}>
+      {typing && <div className="mt-2 flex items-end gap-1"><div className="w-7 shrink-0"><Avatar a={prof(typing) ?? headAv} s={28} /></div><div aria-label="Typing" className="flex items-center gap-1 rounded-[20px] bg-surface px-4 py-3"><i className="tdot" /><i className="tdot" style={{ animationDelay: '.2s' }} /><i className="tdot" style={{ animationDelay: '.4s' }} /></div></div>}{toast && createPortal(<div className="fixed inset-x-4 top-16 z-[90] mx-auto w-fit max-w-full rounded-2xl bg-surface px-4 py-2 text-center text-sm shadow-xl">{toast}</div>, document.body)}
+      {pick && createPortal(<div className="fixed inset-0 z-[80]" onClick={() => setPick(null)} style={{ background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(3px)' }}>
         <div className="absolute flex gap-0.5 rounded-full bg-surface px-2 py-1.5 shadow-2xl" style={{ top: Math.max(80, pick.top - 64), [pick.mine ? 'right' : 'left']: 12 } as React.CSSProperties} onClick={e => e.stopPropagation()}>
           {['❤️', '😂', '😮', '😢', '😡', '👍'].map((em, i) => <button key={em} onClick={() => { react(pick.m, em); setPick(null) }} className="emo-rise p-1.5 text-[28px] leading-none transition-transform active:scale-125" style={{ animationDelay: `${i * 45}ms` }}>{em}</button>)}</div>
         <div className="emo-rise absolute flex flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl" style={{ top: Math.max(80, pick.top - 64) + 66, [pick.mine ? 'right' : 'left']: 12, minWidth: 190, animationDelay: '120ms' } as React.CSSProperties} onClick={e => e.stopPropagation()}>

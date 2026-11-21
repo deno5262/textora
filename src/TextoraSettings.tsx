@@ -87,6 +87,32 @@ function TestPush() {
   return (<div className="flex flex-col gap-2 px-4 pb-3"><button onClick={run} className="rounded-xl border border-line px-4 py-2 font-semibold">Send me a test notification</button>{msg && <p className="text-xs text-mute">{msg} — close the app now to see it.</p>}</div>)
 }
 
+function SelfTest() {
+  const [res, setRes] = useState<[string, string][] | null>(null); const { session } = useAuth(); const uid = session!.user.id
+  const run = async () => {
+    setRes([])
+    const q = (name: string, p: PromiseLike<{ error: any }>) => Promise.resolve(p).then(r => [name, r.error ? String(r.error.message ?? r.error) : 'ok'] as [string, string]).catch((e: any) => [name, String(e?.message ?? e)] as [string, string])
+    const out = await Promise.all([
+      q('Chat list', supabase.rpc('conversation_list')),
+      q('Messages (reply, forward, pin, edit)', supabase.from('messages').select('id,reply_to,forwarded,pinned_at,edited_at,deleted_at,attachment_path').limit(1)),
+      q('Chat theme (chat_bg)', supabase.from('conversation_members').select('chat_bg,muted,last_read_at,last_delivered_at').limit(1)),
+      q('Reactions', supabase.from('message_reactions').select('message_id,user_id,emoji').limit(1)),
+      q('Notes', supabase.from('notes').select('user_id,body,audience,created_at').limit(1)),
+      q('Friends', supabase.from('friendships').select('user_a,user_b').limit(1)),
+      q('Groups (conversations)', supabase.from('conversations').select('id,kind,title,avatar_url,created_by,only_admins_add').limit(1)),
+      q('Group members', supabase.from('conversation_members').select('user_id,role,conversation_id').limit(1)),
+      q('Photos & files storage', supabase.storage.from('chat').list(uid, { limit: 1 }) as any),
+      q('Calls table', supabase.from('calls').select('id,status,answered_at,ended_at').limit(1)),
+      q('Typing (new rules)', supabase.rpc('typing_view2')),
+      q('Notification prefs', supabase.from('push_prefs').select('user_id,lock_screen').limit(1)),
+      q('Device tokens', supabase.from('device_tokens').select('token,bubbles').limit(1))])
+    setRes(out)
+  }
+  return (<div className="flex flex-col gap-2 px-4 pb-3"><button onClick={run} className="rounded-xl border border-line px-4 py-2 font-semibold">Run self-test (find what is broken)</button>
+    {res && !res.length && <p className="text-xs text-mute">Testing…</p>}
+    {res?.map(([n, r]) => <p key={n} className="flex justify-between gap-3 text-xs"><span>{n}</span><span className={r === 'ok' ? 'text-green-400' : 'max-w-[55%] text-right text-red-400'}>{r === 'ok' ? '✓' : r}</span></p>)}</div>)
+}
+
 function PushStatus() {
   const { profile } = useAuth(); const s = usePushStatus()
   const line = (k: string, v: string, ok?: boolean) => <p className="flex justify-between gap-3 text-sm"><span className="text-mute">{k}</span><span className={ok === undefined ? '' : ok ? 'text-green-400' : 'text-red-400'}>{v}</span></p>
@@ -158,6 +184,7 @@ export function TextoraPrefs() {
       <Row icon={Wrench} title="Notification problems?" sub="Check why alerts are not arriving" onClick={() => setFix(f => !f)} right={<ChevronRight size={18} className={`text-mute transition-transform ${fix ? 'rotate-90' : ''}`} />} />
       {fix && <PushStatus />}
       {fix && <TestPush />}
+      {fix && <SelfTest />}
       <Row icon={Smartphone} title="TextGen" sub="Next generation messaging · Version 0.4" />
     </Group>
 

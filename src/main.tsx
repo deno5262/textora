@@ -8,6 +8,7 @@ import Shell from './Shell'
 import Auth from './Auth'
 import Textora from './Textora'
 import Chat from './Chat'
+import CallsPage from './CallsPage'
 import ErrorBoundary from './ErrorBoundary'
 import { PresenceProvider } from './Presence'
 import { initNative } from './native'
@@ -28,6 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Route path="textora/settings" element={<Textora tab="settings" />} />
       <Route path="textora/me" element={<Textora tab="menu" />} />
       <Route path="textora/c/:id" element={<Chat />} />
+      <Route path="textora/calls" element={<CallsPage />} />
     </Route></Route>
     <Route path="*" element={<Navigate to="/textora" replace />} />
   </Routes></PresenceProvider></AuthProvider></ErrorBoundary></HashRouter></React.StrictMode>)
