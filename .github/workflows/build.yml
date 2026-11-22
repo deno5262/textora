@@ -69,7 +69,7 @@ jobs:
           mkdir -p ~/.android
           if [ -f keystore/debug.keystore ]; then cp keystore/debug.keystore ~/.android/debug.keystore; fi
 
-      - name: Build APK (falls back to a build without bubbles if the native part fails)
+      - name: Build APK (3 tries - full bubbles, then basic native alerts, then plain)
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -79,27 +79,36 @@ jobs:
           VITE_TURN_USER: ${{ secrets.VITE_TURN_USER }}
           VITE_TURN_PASS: ${{ secrets.VITE_TURN_PASS }}
         run: |
-          build_apk() { (cd android && chmod +x gradlew && ./gradlew assembleDebug); }
-          if (cd android && chmod +x gradlew && ./gradlew assembleDebug > ../gradle1.log 2>&1); then exit 0; fi
-          jerr=$(grep -E "\.java:[0-9]+: error:|error: |AAPT: error|Manifest merger failed" -A2 gradle1.log | grep -v '^Note:' | head -14 | tr '\n' ' ' | tr -d '"%' | cut -c1-700)
-          err=$(awk '/What went wrong/{f=1} /^\* Try:/{exit} f{print}' gradle1.log | grep -v '^$' | head -6 | tr '\n' ' ' | tr -d '"%' | cut -c1-300)
-          echo "::warning title=Bubble build error::${jerr:-$err}"
-          { echo '### Bubble build failure'; echo '```'; grep -E "\.java:[0-9]+: error:|error: |AAPT: error|Manifest merger failed" -A3 gradle1.log | grep -v '^Note:' | head -40; echo '--- gradle summary ---'; sed -n '/FAILURE:/,$p' gradle1.log | head -25; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          tail -n 60 gradle1.log || true
-          echo "::warning::Native bubble code failed to build. Building WITHOUT bubbles."
-          rm -rf android
+          fresh_android() {
+            rm -rf android
+            npx cap add android
+            node scripts/patch-android.mjs
+            if [ "$1" != "none" ]; then node scripts/add-bubbles.mjs "$1"; fi
+            if [ -n "$GSJ" ]; then printf '%s' "$GSJ" > android/app/google-services.json; fi
+            npx cap sync android
+          }
+          report() {
+            jerr=$(grep -E "\.java:[0-9]+: error:|error: |AAPT: error|Manifest merger failed" -A2 "$1" | grep -v '^Note:' | head -14 | tr '\n' ' ' | tr -d '"%' | cut -c1-700)
+            err=$(awk '/What went wrong/{f=1} /^\* Try:/{exit} f{print}' "$1" | grep -v '^$' | head -6 | tr '\n' ' ' | tr -d '"%' | cut -c1-300)
+            echo "::warning title=$2::${jerr:-$err}"
+            { echo "### $2"; echo '```'; grep -E "\.java:[0-9]+: error:|error: |AAPT: error|Manifest merger failed" -A3 "$1" | grep -v '^Note:' | head -40; echo '--- gradle summary ---'; sed -n '/FAILURE:/,$p' "$1" | head -25; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          }
+          if (cd android && chmod +x gradlew && ./gradlew assembleDebug > ../gradle1.log 2>&1); then echo "Built with chat bubbles"; exit 0; fi
+          report gradle1.log "Bubble build error"
+          echo "::warning::Bubble code failed. Trying basic native alerts (picture + delivery ticks + call ringing, no bubbles)."
+          fresh_android basic
+          if (cd android && chmod +x gradlew && ./gradlew assembleDebug > ../gradle2.log 2>&1); then echo "Built with basic native alerts"; exit 0; fi
+          report gradle2.log "Basic native build error"
+          echo "::warning::Native code failed. Building WITHOUT native alerts."
           VITE_NATIVE_BUBBLES=off npm run build
-          npx cap add android
-          node scripts/patch-android.mjs
-          if [ -n "$GSJ" ]; then printf '%s' "$GSJ" > android/app/google-services.json; fi
-          npx cap sync android
-          build_apk
+          fresh_android none
+          (cd android && chmod +x gradlew && ./gradlew assembleDebug)
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bubble-build-log
-          path: gradle1.log
+          path: gradle*.log
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
