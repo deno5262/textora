@@ -118,7 +118,7 @@ function PushStatus() {
   const { profile } = useAuth(); const s = usePushStatus()
   const line = (k: string, v: string, ok?: boolean) => <p className="flex justify-between gap-3 text-sm"><span className="text-mute">{k}</span><span className={ok === undefined ? '' : ok ? 'text-green-400' : 'text-red-400'}>{v}</span></p>
   return (<div className="flex flex-col gap-1.5 px-4 py-3">
-    {line('Android app', s.native ? 'yes' : 'no', s.native)}{line('Push in this build', s.flag ? 'ON' : 'OFF', s.flag)}{line('Permission', s.perm, s.perm === 'granted')}{line('Bubble mode', s.bubbles, s.bubbles === 'on')}{line('Device token', s.token, s.token !== '-')}{line('Saved to server', s.saved, s.saved.startsWith('saved'))}
+    {line('Android app', s.native ? 'yes' : 'no', s.native)}{line('Push in this build', s.flag ? 'ON' : 'OFF', s.flag)}{line('Permission', s.perm, s.perm === 'granted')}{line('Native alerts (picture, ticks, calls)', s.bubbles, s.bubbles === 'on')}{line('Device token', s.token, s.token !== '-')}{line('Saved to server', s.saved, s.saved.startsWith('saved'))}
     {s.error && <p className="rounded-lg bg-red-950 p-2 text-xs text-red-300">{s.error}</p>}
     <button onClick={() => profile && setupPush(profile.id, true)} className="mt-1 rounded-xl bg-accent px-4 py-2 font-semibold text-on">Retry</button></div>)
 }

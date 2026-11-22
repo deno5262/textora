@@ -21,6 +21,15 @@ function iceServers(): RTCIceServer[] {
   return s
 }
 const RING_MS = 45000
+/** Phone-style ringback heard by the caller (2s tone, 3s silence) so you know the call is going out. */
+function startRingback() {
+  try {
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext; const ctx = new AC(); let on = true
+    const beep = () => { if (!on) return; const t0 = ctx.currentTime; [440, 480].forEach(f => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.06); g.gain.setValueAtTime(0.12, t0 + 1.9); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2); o.connect(g); g.connect(ctx.destination); o.start(t0); o.stop(t0 + 2.05) }) }
+    ctx.resume?.(); beep(); const iv = window.setInterval(beep, 5000)
+    return () => { on = false; window.clearInterval(iv); try { ctx.close() } catch { /* ignore */ } }
+  } catch { return () => {} }
+}
 const fmt = (n: number) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`
 
 export function CallProvider({ children }: { children: ReactNode }) {
@@ -32,12 +41,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false); const [camOff, setCamOff] = useState(false); const [secs, setSecs] = useState(0)
   const [ns, setNs] = useState(true); const [remoteCamOff, setRemoteCamOff] = useState(false); const [torch, setTorch] = useState(false); const [fill, setFill] = useState(false); const [back, setBack] = useState(false)
   const pc = useRef<RTCPeerConnection | null>(null); const chan = useRef<any>(null); const rowCh = useRef<any>(null)
-  const local = useRef<MediaStream | null>(null); const pendingIce = useRef<RTCIceCandidateInit[]>([]); const timer = useRef(0)
+  const stopRing = useRef<(() => void) | null>(null); const ringCh = useRef<any>(null); const local = useRef<MediaStream | null>(null); const pendingIce = useRef<RTCIceCandidateInit[]>([]); const timer = useRef(0)
   const activeRef = useRef<Active | null>(null); const incomingRef = useRef<typeof incoming>(null); const facing = useRef<'user' | 'environment'>('user')
   activeRef.current = active; incomingRef.current = incoming
 
   const cleanup = useCallback((note?: string) => {
-    window.clearTimeout(timer.current)
+    window.clearTimeout(timer.current); stopRing.current?.(); stopRing.current = null
+    if (ringCh.current) { supabase.removeChannel(ringCh.current); ringCh.current = null }
     try { pc.current?.close() } catch { /* ignore */ }
     pc.current = null
     local.current?.getTracks().forEach(t => t.stop()); local.current = null
@@ -84,9 +94,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (error || !data) { cleanup('Could not start the call'); return }
     const id = (data as any).id as string
     setActive({ id, kind, peer, cid, role: 'caller', phase: 'calling', note: 'Calling…' })
+    stopRing.current = startRingback()
+    ringCh.current = supabase.channel('ring-' + id).on('broadcast', { event: 'ringing' }, () => setActive(a => (a && a.phase === 'calling' ? { ...a, note: 'Ringing…' } : a))).subscribe()
+    window.setTimeout(() => setActive(a => (a && a.id === id && a.phase === 'calling' && a.note === 'Calling…' ? { ...a, note: 'Calling… waiting for them to pick up' } : a)), 8000)
     join(id, () => {}, {
       ready: async () => {
         if (pc.current) return   // only one connection, never two voices
+        stopRing.current?.(); stopRing.current = null
         const p = makePc(id, s); setActive(a => (a ? { ...a, phase: 'connecting', note: 'Connecting…' } : a))
         const offer = await p.createOffer(); await p.setLocalDescription(offer)
         chan.current?.send({ type: 'broadcast', event: 'offer', payload: offer })
@@ -159,17 +173,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls', filter: `callee_id=eq.${uid}` }, (p: any) => {
         if (p.new?.status !== 'ringing' && incomingRef.current?.row.id === p.new?.id) setIncoming(null) })
       .subscribe()
-    supabase.from('calls').select('*').eq('callee_id', uid).eq('status', 'ringing').gt('created_at', new Date(Date.now() - RING_MS).toISOString()).order('created_at', { ascending: false }).limit(1)
+    const check = () => supabase.from('calls').select('*').eq('callee_id', uid).eq('status', 'ringing').gt('created_at', new Date(Date.now() - RING_MS).toISOString()).order('created_at', { ascending: false }).limit(1)
       .then(({ data }) => { if (data?.[0]) show(data[0] as CallRow) })
-    return () => { supabase.removeChannel(ch) }
+    check(); window.addEventListener('check-calls', check)
+    return () => { supabase.removeChannel(ch); window.removeEventListener('check-calls', check) }
   }, [uid])
 
   // ringtone + vibration while a call is incoming; stop ringing after 45s
   useEffect(() => {
     if (!incoming) return
+    const rc = supabase.channel('ring-' + incoming.row.id).subscribe((st: string) => { if (st === 'SUBSCRIBED') rc.send({ type: 'broadcast', event: 'ringing', payload: {} }) })
     playNotify(true); const r = window.setInterval(() => { playNotify(true); navigator.vibrate?.([400, 200, 400]) }, 2200)
     const t = window.setTimeout(() => setIncoming(null), RING_MS)
-    return () => { window.clearInterval(r); window.clearTimeout(t) }
+    return () => { window.clearInterval(r); window.clearTimeout(t); supabase.removeChannel(rc) }
   }, [incoming?.row.id])
   useEffect(() => { if (active?.phase !== 'live') return; const i = window.setInterval(() => setSecs(s => s + 1), 1000); return () => window.clearInterval(i) }, [active?.phase])
 

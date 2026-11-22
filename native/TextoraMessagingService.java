@@ -1,5 +1,6 @@
 package __PKG__;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -13,6 +14,8 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
@@ -46,7 +49,14 @@ public class TextoraMessagingService extends FirebaseMessagingService {
     @Override
     public void onMessageReceived(RemoteMessage message) {
         Map<String, String> d = message.getData();
-        if (d == null || !"chat".equals(d.get("type"))) return;
+        if (d == null) return;
+        String type = d.get("type");
+        if ("call_cancel".equals(type)) { cancelCall(getApplicationContext(), d.get("conversation_id")); return; }
+        if ("call".equals(type)) {
+            if (!AppState.isForeground()) { try { showCall(getApplicationContext(), d); } catch (Throwable t) { Log.w(TAG, "call notification failed", t); } }
+            return;
+        }
+        if (!"chat".equals(type)) return;
         ack(d.get("ack_url"));                       // tell the server this device received it (delivered tick)
         if (AppState.isForeground()) return;         // app is open: the in-app alert handles it
         try {
@@ -127,7 +137,7 @@ public class TextoraMessagingService extends FirebaseMessagingService {
         }
 
         NotificationCompat.Builder nb = new NotificationCompat.Builder(ctx, CHANNEL)
-                .setSmallIcon(R.drawable.ic_stat_textora)
+                .setSmallIcon(smallIcon(ctx))
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(style)
@@ -164,6 +174,66 @@ public class TextoraMessagingService extends FirebaseMessagingService {
         }
 
         NotificationManagerCompat.from(ctx).notify(cid.hashCode(), nb.build());
+    }
+
+    private static int smallIcon(Context ctx) {
+        int id = ctx.getResources().getIdentifier("ic_stat_textora", "drawable", ctx.getPackageName());
+        return id != 0 ? id : ctx.getApplicationInfo().icon;
+    }
+
+
+    private static final String CALL_CHANNEL = "chat_calls";
+
+    private static void ensureCallChannel(Context ctx) {
+        if (Build.VERSION.SDK_INT < 26) return;
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm.getNotificationChannel(CALL_CHANNEL) != null) return;
+        NotificationChannel ch = new NotificationChannel(CALL_CHANNEL, "Incoming calls", NotificationManager.IMPORTANCE_HIGH);
+        Uri ring = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        AudioAttributes aa = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        ch.setSound(ring, aa);
+        ch.enableVibration(true);
+        ch.setVibrationPattern(new long[]{0, 600, 400, 600, 400, 600});
+        ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        nm.createNotificationChannel(ch);
+    }
+
+    /** Rings like a phone call, even when the app is closed (full-screen on a locked phone if the user allows it). */
+    private static void showCall(Context ctx, Map<String, String> d) {
+        String cid = d.get("conversation_id");
+        if (cid == null) return;
+        String who = nz(d.get("sender_name"), "TextGen");
+        boolean video = "video".equals(d.get("call_kind"));
+        ensureCallChannel(ctx);
+        Intent open = new Intent(ctx, MainActivity.class);
+        open.setAction(Intent.ACTION_VIEW);
+        open.setData(Uri.parse("textora://call/" + cid));
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(ctx, ("call" + cid).hashCode(), open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder nb = new NotificationCompat.Builder(ctx, CALL_CHANNEL)
+                .setSmallIcon(smallIcon(ctx))
+                .setContentTitle(who)
+                .setContentText(video ? "Incoming video call" : "Incoming voice call")
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setColor(0xFF5B6CFF)
+                .setOngoing(true)
+                .setAutoCancel(true)
+                .setTimeoutAfter(45000)
+                .setFullScreenIntent(pi, true)
+                .setContentIntent(pi);
+        Notification n = nb.build();
+        n.flags |= Notification.FLAG_INSISTENT;
+        NotificationManagerCompat.from(ctx).notify(("call" + cid).hashCode(), n);
+    }
+
+    private static void cancelCall(Context ctx, String cid) {
+        if (cid == null) return;
+        try { NotificationManagerCompat.from(ctx).cancel(("call" + cid).hashCode()); } catch (Throwable ignored) { }
     }
 
     private static String nz(String s, String def) { return (s == null || s.isEmpty()) ? def : s; }

@@ -2,7 +2,7 @@
 import fs from 'fs'
 const p = 'android/app/src/main/AndroidManifest.xml'
 let x = fs.readFileSync(p, 'utf8')
-const perms = ['android.permission.POST_NOTIFICATIONS', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.CAMERA', 'android.permission.VIBRATE']
+const perms = ['android.permission.POST_NOTIFICATIONS', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.CAMERA', 'android.permission.VIBRATE', 'android.permission.USE_FULL_SCREEN_INTENT', 'android.permission.WAKE_LOCK']
 for (const perm of perms) if (!x.includes(perm)) x = x.replace('</manifest>', `    <uses-permission android:name="${perm}" />\n</manifest>`)
 fs.mkdirSync('android/app/src/main/res/drawable', { recursive: true })
 fs.copyFileSync('native/ic_stat_textora.xml', 'android/app/src/main/res/drawable/ic_stat_textora.xml')

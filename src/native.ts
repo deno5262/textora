@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import { App } from '@capacitor/app'
 import { PushNotifications } from '@capacitor/push-notifications'
 export const isNative = Capacitor.isNativePlatform()
-const openChat = (url: string) => { const m = /chat\/([\w-]+)/.exec(url); if (m) location.hash = `#/textora/c/${m[1]}` }
+const openChat = (url: string) => { if (/\/\/call\//.test(url)) { window.dispatchEvent(new Event('check-calls')); return } const m = /chat\/([\w-]+)/.exec(url); if (m) location.hash = `#/textora/c/${m[1]}` }
 export function initNative() {
   if (!isNative) return
   // Notification / bubble taps arrive as textora://chat/<id>
