@@ -76,7 +76,10 @@ export default function Chat() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [cid])
   const isGroup = conv?.kind === 'group'; const other = !isGroup ? members.find(m => m.user_id !== uid)?.profile : undefined; const typingMap = useTypingView(!isGroup)
-  const prof = (pid: string) => members.find(m => m.user_id === pid)?.profile; const nameOf = (pid: string) => (pid === uid ? 'You' : prof(pid)?.full_name || prof(pid)?.username || 'Someone')
+  const [nicks, setNicks] = useState<Record<string, string>>({}); const [nickOpen, setNickOpen] = useState(false); const [nickEdit, setNickEdit] = useState<{ id: string; v: string } | null>(null)
+  const loadNicks = () => supabase.from('nicknames').select('target_id,nickname').eq('conversation_id', cid).then(({ data }) => { if (data) setNicks(Object.fromEntries((data as any[]).map(r => [r.target_id, r.nickname]))) })
+  useEffect(() => { loadNicks() }, [cid])
+  const prof = (pid: string) => members.find(m => m.user_id === pid)?.profile; const nameOf = (pid: string) => (pid === uid ? 'You' : nicks[pid] || prof(pid)?.full_name || prof(pid)?.username || 'Someone')
   const sign = async (paths: string[]) => {
     if (!paths.length) return
     const { data } = await supabase.storage.from('chat').createSignedUrls(paths, 3600)
@@ -246,6 +249,12 @@ export default function Chat() {
   const galRef = useRef<HTMLInputElement>(null), camRef = useRef<HTMLInputElement>(null), vidRef = useRef<HTMLInputElement>(null), docRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (isGroup) return; const load = () => supabase.from('calls').select('*').eq('conversation_id', cid).order('created_at', { ascending: false }).limit(30).then(({ data }) => { if (data) setCallRows(cur => (JSON.stringify(cur) === JSON.stringify(data) ? cur : (data as CallRow[]))) }); load(); const i = window.setInterval(load, 12000); return () => window.clearInterval(i) }, [cid, isGroup])
   useEffect(() => { if (isGroup || !other) return; supabase.from('typing_allow').select('viewer').eq('owner', uid).eq('viewer', other.id).maybeSingle().then(({ data }) => setTAllow(!!data)) }, [other?.id])
+  const saveNick = async () => {
+    if (!nickEdit) return; const v = nickEdit.v.trim().slice(0, 30); const id = nickEdit.id; setNickEdit(null)
+    setNicks(cur => { const n = { ...cur }; if (v) n[id] = v; else delete n[id]; return n })
+    const r = v ? await supabase.from('nicknames').upsert({ conversation_id: cid, target_id: id, nickname: v, set_by: uid, updated_at: new Date().toISOString() }, { onConflict: 'conversation_id,target_id' }) : await supabase.from('nicknames').delete().eq('conversation_id', cid).eq('target_id', id)
+    if (r.error) { flash('Nickname not saved: ' + r.error.message); loadNicks() }
+  }
   const toggleTypingAllow = async () => { if (!other) return; setMenu(false); const on = !tAllow; setTAllow(on); if (on) await supabase.from('typing_allow').insert({ owner: uid, viewer: other.id }); else await supabase.from('typing_allow').delete().eq('owner', uid).eq('viewer', other.id) }
   const [pick, setPick] = useState<{ m: Msg; top: number; mine: boolean } | null>(null)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
@@ -256,7 +265,7 @@ export default function Chat() {
   const bgStyle = myBg?.startsWith('p:') && PRE[myBg.slice(2)] ? { background: PRE[myBg.slice(2)] } : bgUrl ? { backgroundImage: `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined
   const myShow = profile?.show_active !== false; const typer = typing ? nameOf(typing).split(' ')[0] : ''
   const status = typing ? (isGroup ? `${typer} is typing…` : 'Typing…') : isGroup ? `${members.length} members` : other && typingMap[other.id] ? typingMap[other.id] : myShow && other ? statusOf(online.has(other.id), other.show_active, other.last_active_at) : ''
-  const headName = isGroup ? conv.title ?? 'Group' : other!.full_name || other!.username
+  const headName = isGroup ? conv.title ?? 'Group' : nicks[other!.id] || other!.full_name || other!.username
   const headAv = isGroup ? { avatar_url: conv.avatar_url, full_name: conv.title ?? 'G', username: 'group' } : other!
   const label = (q: Msg) => (q.deleted_at ? 'Deleted message' : q.kind === 'image' ? '📷 Photo' : q.kind === 'video' ? '🎥 Video' : q.kind === 'voice' ? '🎤 Voice message' : q.kind === 'file' ? '📎 ' + (q.attachment_name ?? 'File') : q.body)
   const quote = (m: Msg) => { const q = m.reply_to ? msgs.find(x => x.id === m.reply_to) : null; return q ? { who: nameOf(q.sender_id), text: label(q) } : { who: '', text: 'Original message' } }
@@ -363,11 +372,18 @@ export default function Chat() {
       {actions.map(([I, l, fn, ok]) => ok && <button key={l} onClick={fn} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg ${l.startsWith('Delete') || l.startsWith('Report') ? 'text-red-400' : ''}`}><I size={20} />{l}</button>)}</Sheet>}
     {menu && <Sheet onClose={() => setMenu(false)}>
       <button onClick={() => { setMenu(false); setThemeOpen(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Palette size={20} className="text-accent" />Chat theme</button>
+      <button onClick={() => { setMenu(false); setNickOpen(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Pencil size={20} className="text-accent" /><span>Nicknames</span></button>
       {!isGroup && <button onClick={toggleTypingAllow} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Keyboard size={20} className="text-accent" /><span>{tAllow ? 'Hide my typing status from this person' : 'Show my typing status to this person'}<span className="block text-xs text-mute">Used when “Who can see it” is set to Selected friends</span></span></button>}
       {isGroup && <button onClick={() => { setMenu(false); setGroupInfo(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Users size={20} className="text-accent" />Group info & members</button>}
       <button onClick={toggleMute} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg">{muted ? <Bell size={20} className="text-accent" /> : <BellOff size={20} className="text-accent" />}{muted ? 'Unmute notifications' : 'Mute notifications'}</button>
       {!isGroup && <button onClick={toggleBlock} className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-red-400 hover:bg-bg"><Ban size={20} />{iBlocked ? 'Unblock' : 'Block'}</button>}
       {!isGroup && <button onClick={() => { setMenu(false); setRep({ msg: null }); setRepDone('') }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-red-400 hover:bg-bg"><Flag size={20} />Report</button>}</Sheet>}
+    {nickOpen && <Sheet onClose={() => { setNickOpen(false); setNickEdit(null) }}><b className="mb-3 block">Nicknames</b>
+      <div className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto">{members.map(m => { const p = m.profile; if (!p) return null; const cur = nicks[m.user_id]; const editing = nickEdit?.id === m.user_id
+        return (<div key={m.user_id} className="flex items-center gap-3 rounded-xl p-2"><Avatar a={p} s={40} />
+          {editing ? <><input autoFocus maxLength={30} value={nickEdit!.v} onChange={e => setNickEdit({ id: m.user_id, v: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') saveNick() }} placeholder="Nickname" className="input min-w-0 flex-1" /><button onClick={saveNick} className="rounded-full bg-accent px-3 py-1.5 text-sm font-semibold text-on">Save</button></>
+            : <button onClick={() => setNickEdit({ id: m.user_id, v: cur ?? '' })} className="min-w-0 flex-1 text-left"><span className="block truncate font-medium">{cur || p.full_name || p.username}</span><span className="block truncate text-xs text-mute">{cur ? `${p.full_name || p.username} · tap to change` : 'Set nickname'}</span></button>}</div>) })}</div>
+      <p className="mt-2 text-center text-xs text-mute">Everyone in this chat sees these nicknames. Leave it empty and press Save to remove one.</p></Sheet>}
     {attachOpen && <Sheet onClose={() => setAttachOpen(false)}><b className="mb-3 block">Send</b>
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
         {([[ImagePlus, 'Gallery', pickG], [CameraIcon, 'Camera', pickC], [Film, 'Video', () => { setAttachOpen(false); vidRef.current?.click() }], [FileText, 'Document', () => { setAttachOpen(false); docRef.current?.click() }]] as const).map(([I, l, f]) => <button key={l} onClick={f} className="flex flex-col items-center gap-1.5"><span className="grid h-14 w-14 place-items-center rounded-full bg-bg text-accent"><I size={24} /></span>{l}</button>)}</div>

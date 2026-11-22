@@ -102,6 +102,7 @@ function SelfTest() {
       q('Groups (conversations)', supabase.from('conversations').select('id,kind,title,avatar_url,created_by,only_admins_add').limit(1)),
       q('Group members', supabase.from('conversation_members').select('user_id,role,conversation_id').limit(1)),
       q('Photos & files storage', supabase.storage.from('chat').list(uid, { limit: 1 }) as any),
+      (async (): Promise<[string, string]> => { try { const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/bucket`, { headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, Authorization: `Bearer ${session!.access_token}` } }); const j: any = await r.json().catch(() => null); return ['Storage server reachable', r.ok ? `ok · buckets: ${Array.isArray(j) ? j.map((b: any) => b.name).join(', ') || 'none visible' : '?'}` : `HTTP ${r.status} ${j?.message ?? ''}`] } catch (e: any) { return ['Storage server reachable', `blocked: ${e?.message ?? e}`] } })(),
       q('Calls table', supabase.from('calls').select('id,status,answered_at,ended_at').limit(1)),
       q('Typing (new rules)', supabase.rpc('typing_view2')),
       q('Notification prefs', supabase.from('push_prefs').select('user_id,lock_screen').limit(1)),
