@@ -81,10 +81,10 @@ jobs:
         run: |
           build_apk() { (cd android && chmod +x gradlew && ./gradlew assembleDebug); }
           if (cd android && chmod +x gradlew && ./gradlew assembleDebug > ../gradle1.log 2>&1); then exit 0; fi
-          err=$(awk '/What went wrong/{f=1} /^\* Try:/{exit} f{print}' gradle1.log | grep -v '^$' | head -10 | tr '\n' ' ' | tr -d '"%' | cut -c1-600)
-          [ -z "$err" ] && err=$(grep -E "FAILED|error:|^e: " gradle1.log | grep -v '^Note:' | head -5 | tr '\n' ' ' | tr -d '"%' | cut -c1-600)
-          echo "::warning title=Bubble build error::$err"
-          { echo '### Bubble build failure'; echo '```'; sed -n '/FAILURE:/,$p' gradle1.log | head -50; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          jerr=$(grep -E "\.java:[0-9]+: error:|error: |AAPT: error|Manifest merger failed" -A2 gradle1.log | grep -v '^Note:' | head -14 | tr '\n' ' ' | tr -d '"%' | cut -c1-700)
+          err=$(awk '/What went wrong/{f=1} /^\* Try:/{exit} f{print}' gradle1.log | grep -v '^$' | head -6 | tr '\n' ' ' | tr -d '"%' | cut -c1-300)
+          echo "::warning title=Bubble build error::${jerr:-$err}"
+          { echo '### Bubble build failure'; echo '```'; grep -E "\.java:[0-9]+: error:|error: |AAPT: error|Manifest merger failed" -A3 gradle1.log | grep -v '^Note:' | head -40; echo '--- gradle summary ---'; sed -n '/FAILURE:/,$p' gradle1.log | head -25; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           tail -n 60 gradle1.log || true
           echo "::warning::Native bubble code failed to build. Building WITHOUT bubbles."
           rm -rf android
