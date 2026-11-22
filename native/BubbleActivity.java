@@ -5,13 +5,13 @@ import com.getcapacitor.BridgeActivity;
 /** Hosts the chat inside an Android chat bubble (floating head). */
 public class BubbleActivity extends BridgeActivity {
     @Override
-    protected void onStart() {
+    public void onStart() {
         super.onStart();
         AppState.onStart();
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         AppState.onStop();
         super.onStop();
     }
