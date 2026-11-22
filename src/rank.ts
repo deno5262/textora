@@ -43,3 +43,22 @@ export function useStats(userId: string | undefined, own: boolean) {
   }, [userId, own])
   return s
 }
+
+/* ---- helpers for the player card ---- */
+export const tierIndex = (name: string) => TIERS.findIndex(t => t[0] === name)
+const ROMAN: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4 }
+/** Stars shown under the rank. Numbered tiers show I-IV as 1-4 stars; Heroic and Grandmaster keep adding stars as points grow. */
+export function starInfo(name: string, points: number) {
+  const fam = familyOf(name); const part = name.split(' ')[1]
+  if (fam === 'Heroic' || fam === 'Grandmaster') { const base = TIERS[tierIndex(name)][1]; return { filled: 1 + Math.floor(Math.max(0, points - base) / 400), total: 0, open: true } }
+  return { filled: ROMAN[part] ?? 1, total: TIERS.filter(t => familyOf(t[0]) === fam).length, open: false }
+}
+export type SeasonRow = { season: string; points: number; tier: string }
+export function seasonSummary(history: SeasonRow[], currentPoints: number) {
+  const all = [...history]; if (currentPoints > 0 && !all.some(h => h.season === seasonKey())) all.push({ season: seasonKey(), points: currentPoints, tier: rankFor(currentPoints).name })
+  all.sort((a, b) => (a.season < b.season ? -1 : 1))
+  const heroicAt = tierIndex('Heroic')
+  const best = all.reduce<string | null>((b, h) => (b === null || tierIndex(h.tier) > tierIndex(b) ? h.tier : b), null)
+  return { all, best, heroic: all.filter(h => tierIndex(h.tier) >= heroicAt).length, grand: all.filter(h => h.tier === 'Grandmaster').length, played: all.length, since: all[0]?.season ?? null }
+}
+export const monthLabel = (ym: string) => new Date(ym + '-01T00:00:00Z').toLocaleDateString([], { month: 'short', year: 'numeric', timeZone: 'UTC' })

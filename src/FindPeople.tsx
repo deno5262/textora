@@ -4,17 +4,21 @@ import { ArrowLeft, Search as SearchIcon } from 'lucide-react'
 import { supabase } from './supabase'
 import { useAuth } from './AuthContext'
 import { Avatar } from './ui'
-import { fetchFollowingIds, fetchFriendIds } from './textora'
+import { fetchFriendIds } from './textora'
+import { Check, Clock, Plus, UserCheck, X } from 'lucide-react'
 
 type W = { id: string; username: string; full_name: string; avatar_url: string | null }
 export default function FindPeople() {
   const { session } = useAuth(); const uid = session!.user.id
   const [q, setQ] = useState(''); const [res, setRes] = useState<W[] | null>(null); const [msg, setMsg] = useState('')
-  const [fol, setFol] = useState<Set<string>>(new Set()); const [fr, setFr] = useState<Set<string>>(new Set()); const [pend, setPend] = useState<Set<string>>(new Set())
-  useEffect(() => { (async () => {
-    const [a, b, c] = await Promise.all([fetchFollowingIds(uid), fetchFriendIds(uid), supabase.from('friend_requests').select('receiver_id').eq('sender_id', uid).eq('status', 'pending')])
-    setFol(a); setFr(b); setPend(new Set<string>(((c.data ?? []) as any[]).map(r => r.receiver_id as string)))
-  })() }, [])
+  const [fr, setFr] = useState<Set<string>>(new Set()); const [sent, setSent] = useState<Record<string, string>>({}); const [recv, setRecv] = useState<Record<string, string>>({})
+  const loadRel = async () => {
+    const [b, c] = await Promise.all([fetchFriendIds(uid), supabase.from('friend_requests').select('id,sender_id,receiver_id').eq('status', 'pending').or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)])
+    setFr(b); const s: Record<string, string> = {}, r: Record<string, string> = {}
+    ;((c.data ?? []) as any[]).forEach(x => { if (x.sender_id === uid) s[x.receiver_id] = x.id; else r[x.sender_id] = x.id })
+    setSent(s); setRecv(r)
+  }
+  useEffect(() => { loadRel() }, [])
   useEffect(() => {
     const t = q.trim().replace(/[%,()]/g, ''); if (t.length < 2) { setRes(null); return }
     const id = window.setTimeout(async () => {
@@ -28,13 +32,8 @@ export default function FindPeople() {
     }, 350)
     return () => window.clearTimeout(id)
   }, [q])
-  const toggleFollow = async (id: string) => {
-    const has = fol.has(id); if (has && !confirm('Unfollow this person?')) return
-    const r = has ? await supabase.from('follows').delete().eq('follower_id', uid).eq('following_id', id) : await supabase.from('follows').insert({ follower_id: uid, following_id: id })
-    if (r.error) return setMsg(r.error.message); const s = new Set(fol); if (has) s.delete(id); else s.add(id); setFol(s)
-  }
-  const addFriend = async (id: string) => { const r = await supabase.rpc('send_friend_request', { target: id }); if (r.error) return setMsg(r.error.message); setPend(new Set(pend).add(id)) }
-  const small = 'rounded-full border border-line px-3 py-1 text-xs font-semibold'
+  const act = async (fn: () => PromiseLike<any>) => { setMsg(''); const r = await fn(); if (r?.error) setMsg(r.error.message); await loadRel() }
+  const ic = 'grid h-9 w-9 shrink-0 place-items-center rounded-full disabled:opacity-60'
   return (<div className="flex flex-col gap-3 p-4">
     <div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Find people</h2></div>
     <label className="flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2.5"><SearchIcon size={18} className="text-mute" /><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name, username or 8-digit ID" className="min-w-0 flex-1 bg-transparent outline-none" /></label>
@@ -44,6 +43,8 @@ export default function FindPeople() {
     <div className="divide-y divide-line overflow-hidden rounded-2xl bg-surface empty:hidden">{res?.map(p => (
       <div key={p.id} className="flex items-center gap-3 px-4 py-3">
         <Link to={`/textora/u/${p.username}`} className="flex min-w-0 flex-1 items-center gap-3"><Avatar a={p} s={46} /><span className="min-w-0"><b className="block truncate">{p.full_name || p.username}</b><span className="block truncate text-xs text-mute">@{p.username}</span></span></Link>
-        <button onClick={() => toggleFollow(p.id)} className={small}>{fol.has(p.id) ? 'Following' : 'Follow'}</button>
-        {fr.has(p.id) ? <span className="text-xs text-mute">Friends</span> : pend.has(p.id) ? <span className="text-xs text-mute">Requested</span> : <button onClick={() => addFriend(p.id)} className={small}>Add friend</button>}</div>))}</div></div>)
+        {fr.has(p.id) ? <span className={`${ic} bg-green-600 text-white`} title="Friends"><UserCheck size={18} /></span>
+          : sent[p.id] ? <button onClick={() => act(() => supabase.rpc('cancel_friend_request', { req: sent[p.id] }))} aria-label="Cancel request" title="Request sent. Tap to cancel" className={`${ic} bg-bg text-mute`}><Clock size={18} /></button>
+          : recv[p.id] ? <span className="flex gap-1"><button onClick={() => act(() => supabase.rpc('respond_friend_request', { req: recv[p.id], accept: true }))} aria-label="Accept" className={`${ic} bg-green-600 text-white`}><Check size={18} /></button><button onClick={() => act(() => supabase.rpc('respond_friend_request', { req: recv[p.id], accept: false }))} aria-label="Decline" className={`${ic} bg-red-600 text-white`}><X size={18} /></button></span>
+          : <button onClick={() => act(() => supabase.rpc('send_friend_request', { target: p.id }))} aria-label="Send friend request" title="Add friend" className={`${ic} bg-accent text-on`}><Plus size={20} /></button>}</div>))}</div></div>)
 }
