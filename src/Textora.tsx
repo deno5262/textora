@@ -1,6 +1,6 @@
 import { useEffect, useState , useRef} from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft, Phone, User, UserPlus, Trophy } from 'lucide-react'
+import { ArrowLeftRight, LogOut, MessageCircle, MessageCircleMore, MessageSquarePlus, Users, Menu as MenuIcon, MoreHorizontal, BellOff, Search as SearchIcon, X, Archive, ArchiveRestore, Check, Settings as Cog, ChevronRight, Plus, Play, ArrowLeft, Phone, User, UserPlus, Trophy, Radio } from 'lucide-react'
 import { supabase } from './supabase'
 import { compress } from './image'
 import { useAuth } from './AuthContext'
@@ -189,6 +189,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
         <Link to="/textora/settings" className={row}><Cog size={26} /><span className="flex-1 text-lg">Settings</span><ChevronRight className="text-mute" /></Link>
         <Link to="/textora/profile" className={row}><User size={26} /><span className="flex-1 text-lg">My profile</span><ChevronRight className="text-mute" /></Link>
         <Link to="/textora/find" className={row}><UserPlus size={26} /><span className="flex-1 text-lg">Find people</span><ChevronRight className="text-mute" /></Link>
+        <Link to="/textora/live" className={row}><Radio size={26} /><span className="flex-1 text-lg">Live</span><ChevronRight className="text-mute" /></Link>
         <Link to="/textora/ranking" className={row}><Trophy size={26} /><span className="flex-1 text-lg">Ranking</span><ChevronRight className="text-mute" /></Link>
         <Link to="/textora/calls" className={row}><Phone size={26} /><span className="flex-1 text-lg">Calls</span><ChevronRight className="text-mute" /></Link>
         <button onClick={() => nav('/textora', { state: { arch: true } })} className={row}><Archive size={26} /><span className="flex-1 text-lg">Archive</span><ChevronRight className="text-mute" /></button>

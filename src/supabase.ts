@@ -2,7 +2,21 @@ import { createClient } from '@supabase/supabase-js'
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 export const configured = Boolean(url && key)
-export const supabase = createClient(url || 'http://localhost', key || 'missing')
+/** On a weak or switching mobile network some requests die with "Failed to fetch". Retry those quietly (never re-send message inserts). */
+const retryFetch: typeof fetch = async (input, init) => {
+  const method = (init?.method ?? (typeof Request !== 'undefined' && input instanceof Request ? input.method : 'GET')).toUpperCase()
+  const href = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+  const unsafe = method === 'POST' && href.includes('/rest/v1/') && !href.includes('/rpc/')
+  const tries = unsafe ? 1 : 4; let last: unknown
+  for (let i = 0; i < tries; i++) {
+    try { return await fetch(input, init) } catch (e) {
+      last = e; if (init?.signal?.aborted || i === tries - 1) break
+      await new Promise(r => setTimeout(r, 350 * (i + 1) + Math.random() * 250))
+    }
+  }
+  throw last
+}
+export const supabase = createClient(url || 'http://localhost', key || 'missing', { global: { fetch: retryFetch } })
 export type Profile = { typing_status_enabled?: boolean; typing_show_name?: boolean; typing_visibility?: string; typing_name_consent?: boolean; show_active?: boolean; who_can_message?: string; last_active_at?: string | null; following_visibility?: string; followers_visibility?: string; friends_visibility?: string; socials?: Record<string, string>; created_at?: string; show_liked?: boolean; show_favorites?: boolean; quick_reaction?: string; country?: string | null; relationship_status?: string | null; living_in?: string | null; hometown?: string | null; education?: string | null; work?: string | null; birth_year?: number | null; lat?: number | null; lng?: number | null; cover_url?: string | null; tagline?: string | null; is_blood_donor?: boolean; blood_group?: string | null; id: string; username: string; full_name: string; bio: string | null; location: string | null; avatar_url: string | null; level: string; xp: number }
 export const THEMES = [['black_red','Black & Red'],['comfortable_dark','Comfort Dark'],['pure_dark','Pure Dark'],['full_black','Pure Black (AMOLED)'],['light_green','Light (White & Green)'],['midnight_blue','Midnight Blue'],['royal_purple','Royal Purple'],['crimson_red','Crimson Red'],['neon_cyan','Neon Cyan'],['cyber_purple','Cyber Purple'],['toxic_green','Toxic Green'],['crimson','Crimson'],['ice_blue','Ice Blue'],['pure_white','White'],['sunset_orange','Sunset Orange'],['royal_gold','Royal Gold'],['rose_pink','Rose Pink']] as const
 export const THEME_COLORS: Record<string, [string, string, string]> = {

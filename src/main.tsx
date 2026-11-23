@@ -15,6 +15,8 @@ import EditProfile from './EditProfile'
 import FollowList from './FollowList'
 import FindPeople from './FindPeople'
 import Ranking from './Ranking'
+import LiveHome from './LiveHome'
+import LiveRoom from './LiveRoom'
 import ErrorBoundary from './ErrorBoundary'
 import { PresenceProvider } from './Presence'
 import { initNative } from './native'
@@ -42,6 +44,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Route path="textora/edit-profile" element={<div className="flex flex-col gap-3 p-4"><Link to="/textora/profile" className="flex items-center gap-1 text-accent"><ArrowLeft size={18} />Back to profile</Link><EditProfile /></div>} />
       <Route path="textora/find" element={<FindPeople />} />
       <Route path="textora/ranking" element={<Ranking />} />
+      <Route path="textora/live" element={<LiveHome />} />
+      <Route path="textora/live/:id" element={<LiveRoom />} />
     </Route></Route>
     <Route path="*" element={<Navigate to="/textora" replace />} />
   </Routes></PresenceProvider></AuthProvider></ErrorBoundary></HashRouter></React.StrictMode>)
