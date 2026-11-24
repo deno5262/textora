@@ -96,6 +96,9 @@ function SelfTest() {
       q('Chat list', supabase.rpc('conversation_list')),
       q('Messages (reply, forward, pin, edit)', supabase.from('messages').select('id,reply_to,forwarded,pinned_at,edited_at,deleted_at,attachment_path').limit(1)),
       q('Chat theme (chat_bg)', supabase.from('conversation_members').select('chat_bg,muted,last_read_at,last_delivered_at').limit(1)),
+      (async (): Promise<[string, string]> => { try { const l: any = await supabase.rpc('conversation_list'); const g = (l.data as any[] | null)?.find(c => c.kind === 'group'); if (!g) return ['Open a group', 'no group yet']
+        const [a, b, c] = await Promise.all([supabase.from('conversations').select('kind,title,avatar_url,only_admins_add,created_by').eq('id', g.id).maybeSingle(), supabase.from('conversation_members').select('user_id,role,muted,chat_bg,profile:profiles!conversation_members_user_id_fkey(id,username,full_name,avatar_url)').eq('conversation_id', g.id), supabase.from('messages').select('*').eq('conversation_id', g.id).limit(1)])
+        const e = a.error ?? b.error ?? c.error; return ['Open a group', e ? String(e.message) : `ok · ${(b.data ?? []).length} members`] } catch (e: any) { return ['Open a group', String(e?.message ?? e)] } })(),
       q('Reactions', supabase.from('message_reactions').select('message_id,user_id,emoji').limit(1)),
       q('Notes', supabase.from('notes').select('user_id,body,audience,created_at').limit(1)),
       q('Friends', supabase.from('friendships').select('user_a,user_b').limit(1)),
