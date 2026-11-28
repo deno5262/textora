@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Paperclip, Send, X, Check, CheckCheck, MoreHorizontal, MoreVertical, Reply, Copy, Pencil, Trash2, FileText, BellOff, Bell, Mic, Search, Forward, Pin, PinOff, Ban, Flag, Minimize2, Users, Clock, Palette, ImagePlus, Phone, Video, Keyboard, PhoneIncoming, PhoneOutgoing, PhoneMissed, Film, Camera as CameraIcon } from 'lucide-react'
 import { supabase } from './supabase'
@@ -13,8 +13,9 @@ import { sendTypingTo } from './typingBus'
 import { createPortal } from 'react-dom'
 import { useCall } from './calls'
 import HeaderTray from './HeaderTray'
+import { FriendPlus, useFriendState } from './friendState'
 import { CallRow, describeCall } from './callLog'
-import ImageEditor from './ImageEditor'
+const ImageEditor = lazy(() => import('./ImageEditor'))
 import { pickGallery, takePhoto } from './pickMedia'
 import ThemeMenu from './ThemeMenu'
 import { cacheGet, cacheSet } from './cache'
@@ -250,6 +251,7 @@ export default function Chat() {
     setRepDone(error ? error.message : 'Thanks. We will review this report.')
   }
   const { startCall } = useCall()
+  const fs = useFriendState(isGroup ? undefined : other?.id)
   const [tAllow, setTAllow] = useState(false); const [toast, setToast] = useState('')
   const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(''), 2400) }
   const [callRows, setCallRows] = useState<CallRow[]>([])
@@ -370,6 +372,7 @@ export default function Chat() {
       {err && <p role="alert" className="px-2 pb-1 text-sm text-red-400">{err}</p>}
       {!isGroup && iBlocked ? <div className="flex items-center justify-between px-2 py-1 text-sm"><span className="text-mute">You blocked this person.</span><button onClick={toggleBlock} className="rounded-full border border-line px-3 py-1">Unblock</button></div>
         : !isGroup && blockedMe ? <p className="px-2 py-2 text-center text-sm text-mute">You can't reply to this conversation.</p>
+        : !isGroup && !!other && fs.ready && fs.fr.kind !== 'friends' ? <div className="flex items-center gap-3 px-2 py-2"><p className="flex-1 text-sm text-mute">{fs.fr.kind === 'sent' ? 'Friend request sent. You can chat after they accept.' : fs.fr.kind === 'received' ? 'They sent you a friend request. Accept it to chat.' : 'Send a friend request to start chatting.'}</p><FriendPlus f={fs} size={40} /></div>
         : recSecs !== null ? <div className="flex items-center gap-3 px-2 py-1"><i className="h-3 w-3 animate-pulse rounded-full bg-red-500" /><b className="w-12">{mmss(recSecs)}</b><span className="flex-1 text-sm text-mute">Recording…</span>
           <button onClick={() => stopRec(true)} className="rounded-full border border-line px-3 py-1.5 text-sm">Cancel</button><button onClick={() => stopRec(false)} aria-label="Send voice message" className="grid h-11 w-11 place-items-center rounded-full" style={GRAD}><Send size={20} /></button></div>
         : <>{(replyTo || editing) && <div className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2 text-sm"><div className="min-w-0 flex-1 border-l-4 border-accent pl-2">{editing ? <><b className="block text-accent">Editing message</b><span className="block truncate text-mute">{editing.body}</span></> : <><b className="block truncate text-accent">{nameOf(replyTo!.sender_id)}</b><span className="block truncate text-mute">{label(replyTo!)}</span></>}</div><button aria-label="Cancel" onClick={() => { setReplyTo(null); setEditing(null); setText('') }}><X size={16} /></button></div>}
@@ -399,7 +402,7 @@ export default function Chat() {
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
         {([[ImagePlus, 'Gallery', pickG], [CameraIcon, 'Camera', pickC], [Film, 'Video', () => { setAttachOpen(false); vidRef.current?.click() }], [FileText, 'Document', () => { setAttachOpen(false); docRef.current?.click() }]] as const).map(([I, l, f]) => <button key={l} onClick={f} className="flex flex-col items-center gap-1.5"><span className="grid h-14 w-14 place-items-center rounded-full bg-bg text-accent"><I size={24} /></span>{l}</button>)}</div>
       <p className="mt-3 text-center text-xs text-mute">“Document” sends photos and videos in original quality.</p></Sheet>}
-    {editQueue[0] && createPortal(<ImageEditor key={editQueue[0].name + editQueue.length} file={editQueue[0]} onCancel={() => setEditQueue(q => q.slice(1))} onDone={(f, asDoc) => { setEditQueue(q => q.slice(1)); sendAttachment(f, asDoc) }} />, document.body)}
+    {editQueue[0] && createPortal(<Suspense fallback={null}><ImageEditor key={editQueue[0].name + editQueue.length} file={editQueue[0]} onCancel={() => setEditQueue(q => q.slice(1))} onDone={(f, asDoc) => { setEditQueue(q => q.slice(1)); sendAttachment(f, asDoc) }} /></Suspense>, document.body)}
     {themeOpen && <Sheet onClose={() => setThemeOpen(false)}><b className="mb-3 block">Chat theme</b>
       <div className="grid grid-cols-4 gap-3">{Object.entries(PRE).map(([k, v]) => <button key={k} aria-label={k} onClick={() => setBg('p:' + k)} className="h-16 rounded-xl border-2" style={{ background: v, borderColor: myBg === 'p:' + k ? 'var(--accent)' : 'var(--line)' }} />)}</div>
       <button onClick={chooseBg} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left"><ImagePlus size={20} className="text-accent" />Choose from gallery</button>

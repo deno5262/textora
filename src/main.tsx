@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
@@ -16,7 +16,7 @@ import FollowList from './FollowList'
 import FindPeople from './FindPeople'
 import Ranking from './Ranking'
 import LiveHome from './LiveHome'
-import LiveRoom from './LiveRoom'
+const LiveRoom = lazy(() => import('./LiveRoom'))
 import ErrorBoundary from './ErrorBoundary'
 import { PresenceProvider } from './Presence'
 import { initNative } from './native'
@@ -45,9 +45,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Route path="textora/find" element={<FindPeople />} />
       <Route path="textora/ranking" element={<Ranking />} />
       <Route path="textora/live" element={<LiveHome />} />
-      <Route path="textora/live/:id" element={<LiveRoom />} />
+      <Route path="textora/live/:id" element={<Suspense fallback={<div className="fixed inset-0 z-40 grid place-items-center bg-bg text-mute">Loading…</div>}><LiveRoom /></Suspense>} />
     </Route></Route>
     <Route path="*" element={<Navigate to="/textora" replace />} />
   </Routes></PresenceProvider></AuthProvider></ErrorBoundary></HashRouter></React.StrictMode>)
 
-setTimeout(() => { const s = document.getElementById('splash'); s?.classList.add('hide'); setTimeout(() => s?.remove(), 450) }, 350)
+requestAnimationFrame(() => requestAnimationFrame(() => { const s = document.getElementById('splash'); s?.classList.add('hide'); setTimeout(() => s?.remove(), 250) }))

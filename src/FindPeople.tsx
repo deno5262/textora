@@ -8,7 +8,7 @@ import { fetchFriendIds } from './textora'
 import { Check, Clock, Plus, UserCheck, X } from 'lucide-react'
 
 type W = { id: string; username: string; full_name: string; avatar_url: string | null }
-export default function FindPeople() {
+export function PeopleSearch({ autoFocus = false, onActive }: { autoFocus?: boolean; onActive?: (on: boolean) => void }) {
   const { session } = useAuth(); const uid = session!.user.id
   const [q, setQ] = useState(''); const [res, setRes] = useState<W[] | null>(null); const [msg, setMsg] = useState('')
   const [fr, setFr] = useState<Set<string>>(new Set()); const [sent, setSent] = useState<Record<string, string>>({}); const [recv, setRecv] = useState<Record<string, string>>({})
@@ -19,6 +19,7 @@ export default function FindPeople() {
     setSent(s); setRecv(r)
   }
   useEffect(() => { loadRel() }, [])
+  useEffect(() => { onActive?.(q.trim().length >= 2) }, [q])
   useEffect(() => {
     const t = q.trim().replace(/[%,()]/g, ''); if (t.length < 2) { setRes(null); return }
     const id = window.setTimeout(async () => {
@@ -34,9 +35,8 @@ export default function FindPeople() {
   }, [q])
   const act = async (fn: () => PromiseLike<any>) => { setMsg(''); const r = await fn(); if (r?.error) setMsg(r.error.message); await loadRel() }
   const ic = 'grid h-9 w-9 shrink-0 place-items-center rounded-full disabled:opacity-60'
-  return (<div className="flex flex-col gap-3 p-4">
-    <div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Find people</h2></div>
-    <label className="flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2.5"><SearchIcon size={18} className="text-mute" /><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name, username or 8-digit ID" className="min-w-0 flex-1 bg-transparent outline-none" /></label>
+  return (<div className="flex flex-col gap-3">
+    <label className="flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2.5"><SearchIcon size={18} className="text-mute" /><input autoFocus={autoFocus} value={q} onChange={e => setQ(e.target.value)} placeholder="Name, username or 8-digit ID" className="min-w-0 flex-1 bg-transparent outline-none" /></label>
     {msg && <p role="alert" className="text-sm text-red-400">{msg}</p>}
     {res && !res.length && <p className="py-8 text-center text-mute">No one found.</p>}
     {!res && <p className="py-8 text-center text-sm text-mute">Type at least 2 letters, or paste someone's ID from their profile.</p>}
@@ -47,4 +47,8 @@ export default function FindPeople() {
           : sent[p.id] ? <button onClick={() => act(() => supabase.rpc('cancel_friend_request', { req: sent[p.id] }))} aria-label="Cancel request" title="Request sent. Tap to cancel" className={`${ic} bg-bg text-mute`}><Clock size={18} /></button>
           : recv[p.id] ? <span className="flex gap-1"><button onClick={() => act(() => supabase.rpc('respond_friend_request', { req: recv[p.id], accept: true }))} aria-label="Accept" className={`${ic} bg-green-600 text-white`}><Check size={18} /></button><button onClick={() => act(() => supabase.rpc('respond_friend_request', { req: recv[p.id], accept: false }))} aria-label="Decline" className={`${ic} bg-red-600 text-white`}><X size={18} /></button></span>
           : <button onClick={() => act(() => supabase.rpc('send_friend_request', { target: p.id }))} aria-label="Send friend request" title="Add friend" className={`${ic} bg-accent text-on`}><Plus size={20} /></button>}</div>))}</div></div>)
+}
+
+export default function FindPeople() {
+  return (<div className="flex flex-col gap-3 p-4"><div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Find people</h2></div><PeopleSearch autoFocus /></div>)
 }

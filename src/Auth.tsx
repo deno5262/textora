@@ -10,6 +10,18 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' | 'reset' }) {
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState(false)
   if (session) return <Navigate to="/" replace />
   const set = (k: string) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
+  const guest = async () => {
+    setMsg(null); if (!configured) return setMsg({ ok: false, t: 'The app is not connected to Supabase yet.' }); setBusy(true)
+    let last = ''
+    for (let i = 0; i < 3; i++) {
+      const n = String(Math.floor(10000000 + Math.random() * 90000000))
+      const r = await supabase.auth.signInAnonymously({ options: { data: { full_name: 'Guest ' + n.slice(-4), username: 'guest' + n } } })
+      if (!r.error) { await supabase.rpc('ensure_guest_profile', { p_username: 'guest' + n, p_name: 'Guest ' + n.slice(-4) }); setBusy(false); return }
+      last = r.error.message; if (!/username|duplicate|unique/i.test(last)) break
+    }
+    setBusy(false)
+    setMsg({ ok: false, t: /anonymous/i.test(last) ? 'Guest accounts are switched off. In Supabase: Authentication → Sign In / Providers → turn on “Allow anonymous sign-ins”.' : 'Could not create a guest account: ' + last })
+  }
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setMsg(null)
     if (!configured) return setMsg({ ok: false, t: 'Supabase is not configured.' })
@@ -47,5 +59,6 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' | 'reset' }) {
     </form>
     <div className="flex justify-between text-sm text-mute">
       {mode === 'login' ? <><Link to="/signup">Create account</Link><Link to="/reset">Forgot password?</Link></> : <Link to="/login">Back to log in</Link>}
-      {mode === 'reset' && sent && <button type="button" onClick={() => { setSent(false); setMsg(null) }}>Resend code</button>}</div></div>)
+      {mode === 'reset' && sent && <button type="button" onClick={() => { setSent(false); setMsg(null) }}>Resend code</button>}</div>
+    {mode !== 'reset' && <div className="flex flex-col gap-1.5"><button type="button" onClick={guest} disabled={busy} className="rounded-xl border border-line px-4 py-3 font-semibold">Continue as guest</button><p className="text-center text-xs text-mute">No email needed. You get a random name and a personal ID. Add an email later to keep your account.</p></div>}</div>)
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, ReactNode } from 'react'
-import { Bell, ChevronRight, Check, Eye, Keyboard, Lock, MessageCircle, Palette, ShieldBan, Smartphone, UserCheck, Volume2, Wrench } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, Bell, ChevronRight, Check, Eye, Keyboard, Lock, LogOut, Mail, MessageCircle, Palette, ShieldBan, Smartphone, User, UserCheck, Volume2, Wrench } from 'lucide-react'
 import { supabase, THEMES, THEME_COLORS } from './supabase'
 import { useAuth } from './AuthContext'
 import { playNotify } from './sounds'
@@ -136,64 +137,79 @@ function CustomThemeCard() {
     <button onClick={() => { clearCustom(); setC(base) }} className="mt-3 w-full rounded-xl border border-line py-2 text-sm">Reset to app theme</button></div>)
 }
 /* ---------- the page ---------- */
+function SecureAccount({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState(false)
+  const save = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setMsg({ ok: false, t: 'Enter a valid email.' }); if (pw.length < 8) return setMsg({ ok: false, t: 'Password must be at least 8 characters.' })
+    setBusy(true); const { error } = await supabase.auth.updateUser({ email, password: pw }); setBusy(false)
+    setMsg(error ? { ok: false, t: error.message } : { ok: true, t: 'Check your email and confirm it. Then you can log in on any phone.' })
+  }
+  return (<BottomSheet title="Secure your account" onClose={onClose}>
+    <p className="mb-3 text-sm text-mute">Add an email and password so you never lose this account if you change phones.</p>
+    <input className="input mb-2 w-full" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+    <input className="input mb-3 w-full" type="password" placeholder="New password (8+ characters)" value={pw} onChange={e => setPw(e.target.value)} />
+    {msg && <p role="alert" className={`mb-2 text-sm ${msg.ok ? 'text-accent' : 'text-red-400'}`}>{msg.t}</p>}
+    <button disabled={busy} onClick={save} className="w-full rounded-xl bg-accent py-3 font-semibold text-on disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button></BottomSheet>)
+}
+
+type Page = null | 'notifications' | 'theme' | 'privacy' | 'typing' | 'help' | 'account'
 export function TextoraPrefs() {
   const { profile, refresh, theme, setTheme, session } = useAuth(); const uid = session!.user.id
-  const [, force] = useState(0); const [pickTyping, setPickTyping] = useState(false); const [blocked, setBlocked] = useState(false); const [fix, setFix] = useState(false)
-  const lock = useLockPref(uid)
+  const [, force] = useState(0); const [pickTyping, setPickTyping] = useState(false); const [blocked, setBlocked] = useState(false); const [page, setPage] = useState<Page>(null); const [secure, setSecure] = useState(false)
+  const lock = useLockPref(uid); const guest = (session!.user as any).is_anonymous === true
   const set = async (k: string, v: string | boolean) => { await supabase.from('profiles').update({ [k]: v }).eq('id', profile!.id); refresh() }
   const flag = (k: string) => localStorage.getItem(k) !== 'off'; const toggle = (k: string, v: boolean) => { localStorage.setItem(k, v ? 'on' : 'off'); force(n => n + 1) }
   const typingOn = !!profile?.typing_status_enabled
-  return (<div className="flex flex-col gap-6 pb-6">
-    {profile && <div className="flex items-center gap-4 rounded-2xl bg-surface p-4"><Avatar a={profile} s={64} /><div className="min-w-0"><b className="block truncate text-xl">{profile.full_name || profile.username}</b><span className="text-sm text-mute">@{profile.username}</span></div></div>}
+  const themeName = THEMES.find(t => t[0] === theme)?.[1] ?? ''
+  const head = (title: string) => <div className="flex items-center gap-3"><button onClick={() => setPage(null)} aria-label="Back" className="p-1"><ArrowLeft /></button><h2 className="text-xl font-black">{title}</h2></div>
+  const chev = <ChevronRight size={18} className="text-mute" />
 
-    <Group title="Notifications" note="Applies when the app is closed. Notifications never show inside the app while you are using it.">
-      <Choice icon={Lock} title="Lock screen" sub="What others can see on your locked phone" value={lock.v} onPick={lock.save}
-        options={[['show', 'Show name and message'], ['name', 'Show name only', 'The message is replaced by “New message”'], ['hide', 'Hide everything', 'Only “TextGen: new message”']]} />
-      <Row icon={MessageCircle} title="Chat bubbles" sub="Turn on in phone Settings → Apps → TextGen → Notifications → Bubbles" />
-    </Group>
-    {lock.err && <p className="-mt-3 rounded-xl bg-red-950 p-3 text-xs text-red-300">Couldn't save: {lock.err}</p>}
-
-    <Group title="Sounds">
-      <Row icon={Volume2} title="Notification sound" right={<Switch on={flag('notifySound')} onChange={v => toggle('notifySound', v)} />} />
-      <Choice title="Volume" value={localStorage.getItem('notifyVol') ?? 'high'} onPick={v => { localStorage.setItem('notifyVol', v); force(n => n + 1) }} options={[['low', 'Low'], ['mid', 'Medium'], ['high', 'High']]} />
-      <Row title="Message sent sound" right={<Switch on={flag('sendSound')} onChange={v => toggle('sendSound', v)} />} />
-      <Row title="Message seen sound" right={<Switch on={flag('seenSound')} onChange={v => toggle('seenSound', v)} />} />
-      <Row title="Typing sound" right={<Switch on={flag('typingSound')} onChange={v => toggle('typingSound', v)} />} />
-      <Row title="Play a test sound" onClick={() => playNotify(true)} />
-    </Group>
-
-    <Group title="Appearance">
-      <div className="p-3"><p className="mb-2 flex items-center gap-2 text-sm text-mute"><Palette size={16} />App theme (also on the colour button at the top)</p>
-        <div className="grid grid-cols-2 gap-2">{THEMES.map(([k, name]) => (
-          <button key={k} onClick={() => setTheme(k)} className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 text-left text-sm ${theme === k ? 'border-accent text-accent' : 'border-line'}`}>
-            <span className="truncate">{name}</span><span className="flex shrink-0 gap-1">{(THEME_COLORS[k] ?? []).map((c, i) => <i key={i} className="h-3.5 w-3.5 rounded-full border border-line" style={{ background: c }} />)}</span></button>))}</div></div>
-      <CustomThemeCard />
-    </Group>
-
-    <Group title="Privacy" note="Active status is an estimate based on this app being open.">
+  const pages: Record<string, { title: string; el: ReactNode }> = {
+    notifications: { title: 'Notifications & sounds', el: <>
+      <Group title="Notifications" note="Applies when the app is closed. Notifications never show inside the app while you are using it.">
+        <Choice icon={Lock} title="Lock screen" sub="What others can see on your locked phone" value={lock.v} onPick={lock.save}
+          options={[['show', 'Show name and message'], ['name', 'Show name only', 'The message is replaced by “New message”'], ['hide', 'Hide everything', 'Only “TextGen: new message”']]} />
+        <Row icon={MessageCircle} title="Chat bubbles" sub="Turn on in phone Settings → Apps → TextGen → Notifications → Bubbles" /></Group>
+      {lock.err && <p className="rounded-xl bg-red-950 p-3 text-xs text-red-300">Couldn't save: {lock.err}</p>}
+      <Group title="Sounds">
+        <Row icon={Volume2} title="Notification sound" right={<Switch on={flag('notifySound')} onChange={v => toggle('notifySound', v)} />} />
+        <Choice title="Volume" value={localStorage.getItem('notifyVol') ?? 'high'} onPick={v => { localStorage.setItem('notifyVol', v); force(n => n + 1) }} options={[['low', 'Low'], ['mid', 'Medium'], ['high', 'High']]} />
+        <Row title="Message sent sound" right={<Switch on={flag('sendSound')} onChange={v => toggle('sendSound', v)} />} />
+        <Row title="Message seen sound" right={<Switch on={flag('seenSound')} onChange={v => toggle('seenSound', v)} />} />
+        <Row title="Typing sound" right={<Switch on={flag('typingSound')} onChange={v => toggle('typingSound', v)} />} />
+        <Row title="Play a test sound" onClick={() => playNotify(true)} /></Group></> },
+    theme: { title: 'Appearance', el: <Group title="Theme"><div className="p-3">
+      <div className="grid grid-cols-2 gap-2">{THEMES.map(([k, name]) => (
+        <button key={k} onClick={() => setTheme(k)} className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 text-left text-sm ${theme === k ? 'border-accent text-accent' : 'border-line'}`}>
+          <span className="truncate">{name}</span><span className="flex shrink-0 gap-1">{(THEME_COLORS[k] ?? []).map((c, i) => <i key={i} className="h-3.5 w-3.5 rounded-full border border-line" style={{ background: c }} />)}</span></button>))}</div></div><CustomThemeCard /></Group> },
+    privacy: { title: 'Privacy', el: <Group title="Privacy" note="Active status is an estimate based on this app being open.">
       <Row icon={Eye} title="Active status" sub="Let others see when you're online" right={<Switch on={profile?.show_active !== false} onChange={v => set('show_active', v)} />} />
-      <Choice icon={UserCheck} title="Who can message me" value={profile?.who_can_message ?? 'everyone'} onPick={v => set('who_can_message', v)} options={[['everyone', 'Everyone'], ['friends', 'Friends only'], ['nobody', 'Nobody']]} />
-      <Row icon={ShieldBan} title="Blocked users" onClick={() => setBlocked(true)} right={<ChevronRight size={18} className="text-mute" />} />
-    </Group>
-
-    <Group title="Typing status" note="Others only see that you are busy in a chat. Never the message itself.">
+      <Choice icon={UserCheck} title="Who can message me" sub="Strangers can only message after a friend request is accepted" value={profile?.who_can_message ?? 'everyone'} onPick={v => set('who_can_message', v)} options={[['everyone', 'Everyone'], ['friends', 'Friends only'], ['nobody', 'Nobody']]} />
+      <Row icon={ShieldBan} title="Blocked users" onClick={() => setBlocked(true)} right={chev} /></Group> },
+    typing: { title: 'Typing status', el: <Group title="Typing status" note="Others only see that you are busy in a chat. Never the message itself.">
       <Row icon={Keyboard} title="Show a status while I'm typing" right={<Switch on={typingOn} onChange={v => set('typing_status_enabled', v)} />} />
       {typingOn && <>
         <Row title="Show who I'm chatting with" sub="Off shows “Typing with another”. No one else needs to agree." right={<Switch on={!!profile?.typing_show_name} onChange={v => set('typing_show_name', v)} />} />
         <Choice title="Who can see it" value={profile?.typing_visibility ?? 'friends'} onPick={v => set('typing_visibility', v)} options={[['everyone', 'Everyone'], ['friends', 'Friends'], ['custom', 'Selected friends'], ['private', 'Only me']]} />
-        {profile?.typing_visibility === 'custom' && <Row title="Choose friends" sub="Only they can see your typing status" onClick={() => setPickTyping(true)} right={<ChevronRight size={18} className="text-mute" />} />}</>}
-    </Group>
-
-    <Group title="Help">
-      <Row icon={Wrench} title="Notification problems?" sub="Check why alerts are not arriving" onClick={() => setFix(f => !f)} right={<ChevronRight size={18} className={`text-mute transition-transform ${fix ? 'rotate-90' : ''}`} />} />
-      {fix && <PushStatus />}
-      {fix && <TestPush />}
-      {fix && <SelfTest />}
-      <Row icon={Smartphone} title="TextGen" sub="Next generation messaging · Version 0.4" />
-    </Group>
-
-    <Group title="Account"><Row icon={Bell} title="Log out" danger onClick={async () => { const { dropPushToken } = await import('./push'); await dropPushToken(); await supabase.auth.signOut() }} /></Group>
+        {profile?.typing_visibility === 'custom' && <Row title="Choose friends" sub="Only they can see your typing status" onClick={() => setPickTyping(true)} right={chev} />}</>}</Group> },
+    help: { title: 'Help & diagnostics', el: <Group title="Notification problems?"><PushStatus /><TestPush /><SelfTest /><Row icon={Smartphone} title="TextGen" sub="Next generation messaging · Version 0.5" /></Group> },
+    account: { title: 'Account', el: <>
+      {guest && <Group title="Guest account" note="You are using a guest account. It stays on this phone only until you add an email."><Row icon={Mail} title="Add email and password" sub="Keep this account on any phone" onClick={() => setSecure(true)} right={chev} /></Group>}
+      <Group title="Account"><Row icon={LogOut} title="Log out" danger onClick={async () => { if (guest && !confirm('This guest account will be lost if you log out. Add an email first to keep it. Log out anyway?')) return; const { dropPushToken } = await import('./push'); await dropPushToken(); await supabase.auth.signOut() }} /></Group></> },
+  }
+  const cur = page ? pages[page] : null
+  return (<div className="flex flex-col gap-5 pb-6">
+    {cur ? <>{head(cur.title)}{cur.el}</> : <>
+      {profile && <Link to="/textora/profile" className="flex items-center gap-4 rounded-2xl bg-surface p-4"><Avatar a={profile} s={64} /><div className="min-w-0 flex-1"><b className="block truncate text-xl">{profile.full_name || profile.username}</b><span className="text-sm text-mute">@{profile.username}{guest ? ' · Guest' : ''}</span></div>{chev}</Link>}
+      <Group title="Settings">
+        <Row icon={Bell} title="Notifications & sounds" sub="Alerts, lock screen, sound modes" onClick={() => setPage('notifications')} right={chev} />
+        <Row icon={Palette} title="Appearance" sub={themeName || 'Theme and colours'} onClick={() => setPage('theme')} right={chev} />
+        <Row icon={Lock} title="Privacy" sub="Active status, who can message you, blocked" onClick={() => setPage('privacy')} right={chev} />
+        <Row icon={Keyboard} title="Typing status" sub="Who sees when you type" onClick={() => setPage('typing')} right={chev} />
+        <Row icon={Wrench} title="Help & diagnostics" sub="Fix notifications, self-test" onClick={() => setPage('help')} right={chev} />
+        <Row icon={User} title="Account" sub={guest ? 'Guest account' : 'Log out'} onClick={() => setPage('account')} right={chev} /></Group></>}
     {blocked && <BlockedSheet onClose={() => setBlocked(false)} />}
     {pickTyping && <TypingAllowSheet onClose={() => setPickTyping(false)} />}
+    {secure && <SecureAccount onClose={() => setSecure(false)} />}
   </div>)
 }

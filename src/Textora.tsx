@@ -16,6 +16,8 @@ import { Avatar } from './ui'
 import { TextoraPrefs } from './TextoraSettings'
 import { dropPushToken } from './push'
 import ThemeMenu from './ThemeMenu'
+import { PeopleSearch } from './FindPeople'
+import { TopList } from './Ranking'
 type P = { id: string; username: string; full_name: string; avatar_url: string | null; show_active?: boolean; last_active_at?: string | null; living_in?: string | null; since?: string }
 type Note = { user_id: string; body: string; audience: string; created_at: string }
 function Sheet({ onClose, children, tall }: { onClose: () => void; children: React.ReactNode; tall?: boolean }) {
@@ -105,7 +107,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
   useTypingTick(); const prevT = useRef<Record<string, string>>({}); useEffect(() => { if (Object.keys(typingMap).some(k => !prevT.current[k])) playTyping(); prevT.current = { ...typingMap } }, [typingMap])
   const t = tab === 'me' ? 'menu' : tab
   const [offline, setOffline] = useState(!navigator.onLine); const [convs, setConvs] = useState<Conv[] | null>(() => cacheGet<Conv[]>(`convs:${uid}`)); const [loadErr, setLoadErr] = useState(''); const [q, setQ] = useState(''); const [arch, setArch] = useState(!!(loc.state as any)?.arch)
-  const [friends, setFriends] = useState<P[]>(() => cacheGet<P[]>(`friends:${uid}`) ?? []); const [notes, setNotes] = useState<Note[]>([]); const [pmode, setPmode] = useState('all'); const [reqs, setReqs] = useState<{ id: string; who: P }[]>([])
+  const [friends, setFriends] = useState<P[]>(() => cacheGet<P[]>(`friends:${uid}`) ?? []); const [notes, setNotes] = useState<Note[]>([]); const [pmode, setPmode] = useState('all'); const [searching, setSearching] = useState(false); const [reqs, setReqs] = useState<{ id: string; who: P }[]>([])
   const [compose, setCompose] = useState(false); const [newOpen, setNewOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [menu, setMenu] = useState<Conv | null>(null); const [noteSheet, setNoteSheet] = useState(false); const [noteReply, setNoteReply] = useState<{ note: Note; who: P } | null>(null)
   useEffect(() => { const on = () => setOffline(false), off = () => setOffline(true); window.addEventListener('online', on); window.addEventListener('offline', off); return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) } }, [])
   const pf = useRef<Record<string, string>>({})
@@ -178,8 +180,9 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
                 {c.unread > 0 ? <i className="h-3 w-3 rounded-full bg-accent" /> : seen ? <Avatar a={convAv(c)} s={16} /> : <i className="h-3 w-3" />}</div></Link>
             <button aria-label="Options" onClick={() => setMenu(c)} className="p-1 text-mute"><MoreHorizontal size={18} /></button></div>) })}</div>}
       {t === 'people' && <div className="flex flex-col gap-3"><h2 className="text-3xl font-black">People</h2>
-        <div className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto">{chip('active', <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-green-500" />{activeFriends.length} active</span>)}{chip('requests', `Friend requests${reqs.length ? ' (' + reqs.length + ')' : ''}`)}{chip('all', 'All')}</div>
-        {pmode === 'requests' ? (<>{!reqs.length && <p className="py-10 text-center text-mute">No new friend requests.</p>}{reqs.map(r => <div key={r.id} className="flex items-center gap-3 py-2"><Avatar a={r.who} s={52} /><b className="min-w-0 flex-1 truncate">{r.who.full_name || r.who.username}</b><button onClick={() => answer(r.id, true)} className="btn px-3 py-1.5 text-sm">Accept</button><button onClick={() => answer(r.id, false)} className="rounded-xl border border-line px-3 py-1.5 text-sm">Decline</button></div>)}</>)
+        <div className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto">{chip('active', <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-green-500" />{activeFriends.length} active</span>)}{chip('requests', `Friend requests${reqs.length ? ' (' + reqs.length + ')' : ''}`)}{chip('all', 'All')}{chip('top', 'Top users')}</div>
+        <PeopleSearch onActive={setSearching} />
+        {searching ? null : pmode === 'top' ? <TopList /> : pmode === 'requests' ? (<>{!reqs.length && <p className="py-10 text-center text-mute">No new friend requests.</p>}{reqs.map(r => <div key={r.id} className="flex items-center gap-3 py-2"><Avatar a={r.who} s={52} /><b className="min-w-0 flex-1 truncate">{r.who.full_name || r.who.username}</b><button onClick={() => answer(r.id, true)} className="btn px-3 py-1.5 text-sm">Accept</button><button onClick={() => answer(r.id, false)} className="rounded-xl border border-line px-3 py-1.5 text-sm">Decline</button></div>)}</>)
           : (<>{!(pmode === 'active' ? activeFriends : friends).length && <p className="py-10 text-center text-mute">{pmode === 'active' ? 'Nobody is active right now.' : 'Your friends appear here. Add friends from the main NEXORA app to chat with them.'}</p>}
             {[...(pmode === 'active' ? activeFriends : friends)].sort((a, b) => Number(online.has(b.id)) - Number(online.has(a.id))).map(p => <button key={p.id} onClick={() => openWith(p.id)} className="flex items-center gap-3 rounded-xl py-2 text-left"><span className="relative"><Avatar a={p} s={56} />{myShow && p.show_active !== false && online.has(p.id) && <i className="absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-bg bg-green-500" />}</span>
               <div className="min-w-0 flex-1"><b className="block truncate text-lg font-medium">{p.full_name || p.username}</b><span className="block truncate text-sm text-mute">{subtitle(p) || (myShow ? statusOf(online.has(p.id), p.show_active !== false, p.last_active_at ?? null) : '')}</span></div></button>)}</>)}
@@ -198,7 +201,7 @@ export default function Textora({ tab = 'chats' }: { tab?: string }) {
       {t === 'settings' && <div className="flex flex-col gap-4"><div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Settings</h2></div><TextoraPrefs /></div>}
     </main>
     <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-xl border-t border-line bg-bg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {tabLink('/textora', 'chats', MessageCircle, 'Chats', unreadTotal)}{tabLink('/textora/people', 'people', Users, 'People', reqs.length)}{tabLink('/textora/menu', 'menu', MenuIcon, 'Menu')}</nav>
+      {tabLink('/textora', 'chats', MessageCircle, 'Chats', unreadTotal)}{tabLink('/textora/people', 'people', Users, 'People', reqs.length)}{tabLink('/textora/live', 'live', Radio, 'Live')}{tabLink('/textora/menu', 'menu', MenuIcon, 'Menu')}</nav>
     {compose && <Sheet onClose={() => setCompose(false)}><button onClick={() => { setCompose(false); setNewOpen(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><MessageSquarePlus className="text-accent" />New message</button>
       <button onClick={() => { setCompose(false); setGroupOpen(true) }} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-bg"><Users className="text-accent" />New group</button></Sheet>}
     {menu && <Sheet onClose={() => setMenu(null)}><b>{menu.title}</b>

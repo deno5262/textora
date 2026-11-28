@@ -7,17 +7,17 @@ export type Fr = { kind: 'none' | 'friends' | 'sent' | 'received'; id?: string }
 /** Friend-request state with one person, plus the actions. */
 export function useFriendState(target: string | undefined) {
   const { session } = useAuth(); const uid = session!.user.id
-  const [fr, setFr] = useState<Fr>({ kind: 'none' }); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('')
+  const [fr, setFr] = useState<Fr>({ kind: 'none' }); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(''); const [ready, setReady] = useState(false)
   const load = async () => {
     if (!target) return; const [a, b] = uid < target ? [uid, target] : [target, uid]
     const [fs, rq] = await Promise.all([
       supabase.from('friendships').select('user_a').eq('user_a', a).eq('user_b', b).maybeSingle(),
       supabase.from('friend_requests').select('id,sender_id').eq('status', 'pending').or(`and(sender_id.eq.${uid},receiver_id.eq.${target}),and(sender_id.eq.${target},receiver_id.eq.${uid})`).maybeSingle()])
-    const q: any = rq.data; setFr(fs.data ? { kind: 'friends' } : q ? { kind: q.sender_id === uid ? 'sent' : 'received', id: q.id } : { kind: 'none' })
+    const q: any = rq.data; setFr(fs.data ? { kind: 'friends' } : q ? { kind: q.sender_id === uid ? 'sent' : 'received', id: q.id } : { kind: 'none' }); setReady(true)
   }
   useEffect(() => { load() }, [target])
   const run = async (fn: () => PromiseLike<any>) => { setBusy(true); setMsg(''); const r = await fn(); if (r?.error) setMsg(r.error.message); await load(); setBusy(false) }
-  return { fr, busy, msg, reload: load,
+  return { fr, busy, msg, ready, reload: load,
     send: () => run(() => supabase.rpc('send_friend_request', { target })),
     cancel: () => run(() => supabase.rpc('cancel_friend_request', { req: fr.id })),
     accept: () => run(() => supabase.rpc('respond_friend_request', { req: fr.id, accept: true })),

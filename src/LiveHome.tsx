@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Mic, Radio, Users } from 'lucide-react'
+import { ArrowLeft, Menu as MenuIcon, MessageCircle, Mic, Radio, Users } from 'lucide-react'
 import { supabase } from './supabase'
 import { useAuth } from './AuthContext'
 import { Avatar } from './ui'
@@ -11,6 +11,7 @@ type P = { id: string; username: string; full_name: string; avatar_url: string |
 export default function LiveHome() {
   const { session } = useAuth(); const uid = session!.user.id; const nav = useNavigate()
   const [rooms, setRooms] = useState<Room[] | null>(null); const [hosts, setHosts] = useState<Record<string, P>>({}); const [used, setUsed] = useState<Record<string, number>>({})
+  const [chk, setChk] = useState(''); const check = async () => { setChk('Checking…'); const { data, error } = await supabase.functions.invoke('live', { body: { action: 'check' } }); if (error) { let m = error.message; try { const j = await (error as any).context?.json(); if (j?.error) m = j.error } catch { /* ignore */ } return setChk('Failed: ' + m) } const d: any = data; setChk(d.ok ? `Voice server OK (${d.server})` : `Voice server refused the keys (HTTP ${d.status}). Key starts with “${d.key_starts_with}”, key length ${d.key_length}, secret length ${d.secret_length}. ${d.detail}`) }
   const [open, setOpen] = useState(false); const [title, setTitle] = useState(''); const [seats, setSeats] = useState(8); const [mode, setMode] = useState<'request' | 'open'>('request'); const [busy, setBusy] = useState(false); const [err, setErr] = useState('')
   useBackClose(open, () => setOpen(false))
   const load = async () => {
@@ -33,7 +34,7 @@ export default function LiveHome() {
     const { data, error } = await supabase.rpc('live_create', { p_title: title.trim(), p_seats: seats, p_mode: mode })
     setBusy(false); if (error) return setErr(error.message); nav(`/textora/live/${data}`)
   }
-  return (<div className="flex flex-col gap-4 p-4">
+  return (<div className="flex flex-col gap-4 p-4 pb-24">
     <div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="flex-1 text-2xl font-black">Live</h2>
       <button onClick={() => setOpen(true)} className="flex items-center gap-2 rounded-full bg-red-600 px-4 py-2 font-bold text-white"><Radio size={18} />Go live</button></div>
     {err && !open && <p role="alert" className="rounded-xl bg-red-950 p-3 text-xs text-red-300">{err} (run the live SQL in Supabase)</p>}
@@ -46,6 +47,7 @@ export default function LiveHome() {
         <b className="w-full truncate">{r.title}</b><span className="w-full truncate text-xs text-mute">{h?.full_name || h?.username || 'Host'}</span>
         <span className="flex items-center gap-3 text-xs text-mute"><span className="flex items-center gap-1"><Mic size={13} />{used[r.id] ?? 1}/{r.seat_count}</span>{r.host_id === uid && <span className="flex items-center gap-1 text-accent"><Users size={13} />You</span>}</span></Link>) })}</div>
 
+    <div className="text-center"><button onClick={check} className="text-xs text-mute underline">Check the voice server</button>{chk && <p className="mt-1 break-words text-xs text-mute">{chk}</p>}</div>
     {open && <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={() => setOpen(false)}>
       <div onClick={e => e.stopPropagation()} className="w-full rounded-t-3xl bg-surface p-5" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
         <b className="mb-3 block text-lg">Start a live</b>
@@ -58,5 +60,7 @@ export default function LiveHome() {
           <button onClick={() => setMode('open')} className={`flex-1 rounded-xl border p-2 text-sm ${mode === 'open' ? 'border-accent text-accent' : 'border-line'}`}>Anyone, instantly</button></div>
         {err && <p role="alert" className="mb-2 text-sm text-red-400">{err}</p>}
         <button disabled={busy || !title.trim()} onClick={create} className="w-full rounded-xl bg-red-600 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Starting…' : 'Go live'}</button></div></div>}
+    <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-xl border-t border-line bg-bg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {([['/textora', MessageCircle, 'Chats', false], ['/textora/people', Users, 'People', false], ['/textora/live', Radio, 'Live', true], ['/textora/menu', MenuIcon, 'Menu', false]] as const).map(([to, I, l, on]) => <Link key={l} to={to} className="flex flex-1 flex-col items-center gap-0.5 py-2 text-xs" style={{ color: on ? 'var(--accent)' : 'var(--mute)' }}><I size={24} />{l}</Link>)}</nav>
   </div>)
 }

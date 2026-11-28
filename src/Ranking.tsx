@@ -9,7 +9,7 @@ import { daysLeftInSeason, rankFor, seasonKey, seasonName } from './rank'
 
 type Row = { user_id: string; season_points: number; level: number }
 type P = { id: string; username: string; full_name: string; avatar_url: string | null }
-export default function Ranking() {
+export function TopList() {
   const { session } = useAuth(); const uid = session!.user.id
   const [rows, setRows] = useState<Row[] | null>(null); const [people, setPeople] = useState<Record<string, P>>({}); const [mine, setMine] = useState<{ pos: number; pts: number } | null>(null)
   useEffect(() => { (async () => {
@@ -22,8 +22,7 @@ export default function Ranking() {
       if (pts > 0) { const { count } = await supabase.from('user_stats').select('user_id', { count: 'exact', head: true }).eq('season', seasonKey()).gt('season_points', pts); setMine({ pos: (count ?? 0) + 1, pts }) } }
   })() }, [])
   const medal = (i: number) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1))
-  return (<div className="flex flex-col gap-3 p-4">
-    <div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Ranking</h2></div>
+  return (<div className="flex flex-col gap-3">
     <div className="rounded-2xl border border-line bg-surface p-4 text-center"><Trophy className="mx-auto mb-1 text-yellow-400" /><b>{seasonName()} season</b><p className="text-xs text-mute">Ends in {daysLeftInSeason()} days. Points reset every month. Grandmaster players receive special rewards.</p>
       {mine && <p className="mt-2 text-sm">You are <b>#{mine.pos}</b> with <b>{mine.pts.toLocaleString()}</b> points</p>}</div>
     {!rows && <p className="py-8 text-center text-mute">Loading…</p>}
@@ -33,4 +32,8 @@ export default function Ranking() {
         <span className="w-7 text-center font-bold">{medal(i)}</span>{p ? <Avatar a={p} s={42} /> : <span className="h-10 w-10 rounded-full bg-bg" />}
         <span className="min-w-0 flex-1"><b className="block truncate">{p?.full_name || p?.username || 'Player'}</b><span className="text-xs text-mute">Level {r.level} · {r.season_points.toLocaleString()} pts</span></span>
         <RankBadge tier={rankFor(r.season_points).name} size={13} /></Link>) })}</div></div>)
+}
+
+export default function Ranking() {
+  return (<div className="flex flex-col gap-3 p-4"><div className="flex items-center gap-3"><Link to="/textora/menu" aria-label="Back" className="p-1"><ArrowLeft /></Link><h2 className="text-2xl font-black">Ranking</h2></div><TopList /></div>)
 }
